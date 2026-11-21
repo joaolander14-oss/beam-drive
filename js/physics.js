@@ -105,7 +105,7 @@ export class Vehicle {
     this.vel.set(0, 0, 0); this.w.set(0, 0, 0);
     for (const h of this.wh) { h.omega = 0; h.s = h.w.sRest; h.sPrev = h.w.sRest; h.alphaF = 0; h.contact = false; }
     this.we = this.E.idle * Math.PI / 30; this.fill = 0; this.gear = 1; this.shiftT = 0; this.pendingGear = null;
-    this.steerCmd = 0; this.cl = null; this.updateAxes();
+    this.steerCmd = 0; this.cl = null; this.fallen = false; this.lean = 0; this.updateAxes();
   }
 
   // põe o carro de pé no lugar atual
@@ -118,6 +118,7 @@ export class Vehicle {
     this.pos.set(x, h + this.spec.cgH + 0.45, z);
     this.vel.set(0, 0, 0); this.w.set(0, 0, 0);
     for (const hh of this.wh) hh.omega = 0;
+    this.fallen = false;
     this.updateAxes();
   }
 
@@ -193,6 +194,7 @@ export class Vehicle {
       const slipAng = Math.abs(Math.atan2(this.localVy || 0, Math.max(Math.abs(fs), 2)));
       lim = Math.max(lim, Math.min(1, slipAng * 1.6 / s.steerMax * 1.0));
     }
+    if (s.bike) lim = 1 / (1 + Math.pow(v / 11, 2)) + 0.02;
     // Ackermann
     this.steerLim = lim;
     const d = -clamp(inp.steer, -1, 1) * s.steerMax * lim; // + = esquerda
@@ -373,7 +375,7 @@ export class Vehicle {
           const d = offs[k] * R;
           const px = cx + dxh * d, pz = cz + dzh * d;
           const hh = world.heightAt(px, pz);
-          const need = hh + Math.sqrt(R * R - d * d);
+          const need = hh + Math.sqrt(R * R - d * d) * (s.bike ? 0.25 + 0.75 * Math.max(ay.y, 0.2) : 1);
           if (need > best) { best = need; bh = hh; bpx = px; bpz = pz; bk = k; }
         }
         sCur = (m.y - best) / uy;
@@ -746,6 +748,7 @@ export class Vehicle {
     // F=(0,-dfF,0) em r=(a,0,0): torque = r x F = (0,0, a*(-dfF)) ; traseira r=(-(WB-a),0,0): (0,0,(WB-a)*dfR)
     Tl.set(0, 0, -s.a * dfF + (s.WB - s.a) * dfR);
     T.add(Tl.applyQuaternion(this.quat));
+    if (s.bike) this.riderBalance(T, dt);
     // nitro/empuxo direto já está no motor
     this.vel.addScaledVector(F, dt / M);
     // dinâmica angular
@@ -763,6 +766,31 @@ export class Vehicle {
     // quaternion
     const wq = new THREE.Quaternion(this.w.x * dt * 0.5, this.w.y * dt * 0.5, this.w.z * dt * 0.5, 0).multiply(this.quat);
     this.quat.set(this.quat.x + wq.x, this.quat.y + wq.y, this.quat.z + wq.z, this.quat.w + wq.w).normalize();
+  }
+
+  // Piloto virtual da moto: mantém o ângulo de inclinação em equilíbrio com a curva (a = v·ω) e segura a moto parada.
+  riderBalance(T, dt) {
+    const s = this.spec, ax = this.ax, ay = this.ay, az = this.az;
+    const hl = Math.hypot(ax.x, ax.z) || 1, hx = ax.x / hl, hz = ax.z / hl;
+    const rx = az.x, rz = az.z, rl = Math.hypot(rx, rz) || 1;
+    const lean = Math.atan2((ay.x * rx + ay.z * rz) / rl, ay.y);          // + = inclinada para a direita
+    const roll = this.w.x * hx + this.w.z * hz;   // velocidade de rolagem em torno do eixo longitudinal
+    if (this.fallen) return;
+    if (Math.abs(lean) > 1.12 || (ay.y < 0.25)) { this.fallen = true; this.events.push({ type: 'hit', v: 8, p: this.pos.clone() }); return; }
+    const v = this.fwdSpeed, M = s.mass, h = s.cgH, g = 9.81;
+    const om = -this.w.y;                                                  // taxa de curva para a direita
+    let tgt = Math.atan((v * om) / g);
+    const sp = Math.abs(v), slow = 1 - clamp(sp / 2.5, 0, 1);              // parada: pé no chão
+    tgt = tgt * (1 - slow);
+    tgt = clamp(tgt, -0.95, 0.95);
+    const ref = this.wh[0].contact || this.wh[2].contact;
+    const Kp = 6.0 * M * g * h * (1 + 1.0 * slow), Kd = 1.7 * Math.sqrt(Kp * (s.I.x + M * h * h));
+    let tau = Kp * (tgt - lean) - Kd * roll;
+    const lim = 3.5 * M * g * h; tau = clamp(tau, -lim, lim);
+    if (!ref) tau *= 0.15;
+    // eixo longitudinal horizontal (mundo)
+    T.x += hx * tau; T.z += hz * tau;
+    this.lean = lean;
   }
 
   holdAtRest(dt) {
@@ -929,8 +957,10 @@ export class Vehicle {
     // dano mecânico
     const s = this.spec;
     const front = lp.x > s.a + s.car.fo - 1.4;
-    const d = Math.max(0, v - 4) * 0.012;
-    this.dmg.body = Math.min(1, this.dmg.body + Math.max(0, v - 2) * 0.004);
+    const d = Math.pow(Math.max(0, v - 4), 1.3) * 0.0105;
+    this.dmg.body = Math.min(1, this.dmg.body + Math.max(0, v - 2) * 0.012);
+    // batida forte: a suspensão dianteira/traseira empena (rodas desalinhadas)
+    if (v > 9) { const fr = lp.x > 0 ? [0, 1] : [2, 3]; for (const i of fr) this.dmg.wheel[i] = Math.min(1, this.dmg.wheel[i] + (v - 8) * 0.012 * (0.5 + Math.random())); }
     if (front) { this.dmg.engine = Math.min(1, this.dmg.engine + d * 0.9); this.dmg.rad = Math.min(1, this.dmg.rad + d * 1.4); }
     for (let i = 0; i < 4; i++) {
       const w = s.wheels[i];

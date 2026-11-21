@@ -244,7 +244,7 @@ export function buildRealWorld(D) {
     const area = (c - a) * (d - b), n = Math.min(120, Math.floor(area / 600));
     for (let k = 0; k < n * 3 && trees.length < 600; k++) { const x = a + R() * (c - a), z = b + R() * (d - b); if (inPoly(x, z, g.pts) && w.surfAt(x, z) === 3) trees.push([x, z]); }
   }
-  for (const [x, z] of D.trees || []) if (trees.length < 2500 && w.surfAt(x, z) !== 9) trees.push([x, z]);
+  for (const [x, z] of D.trees || []) if (trees.length < 2500 * ((window.BD && window.BD.gfx.detail) || 1) && w.surfAt(x, z) !== 9) trees.push([x, z]);
   if (trees.length) pineSet(w, trees);
 
   // ponto de partida: via carro mais próxima do centro

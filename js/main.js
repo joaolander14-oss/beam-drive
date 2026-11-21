@@ -3,6 +3,8 @@
 // ============================================================
 import * as THREE from 'three';
 import './cars2.js';
+import './bikes.js';
+import { BikeModel } from './bikemodel.js';
 import './catalog.js';
 import { CARS, ENGINES, TIMES, MAPS, SUSP_PRESETS, SURF, clamp, lerp, sstep } from './data.js';
 import { defaultCfg, buildSpec } from './spec.js';
@@ -24,16 +26,29 @@ const App = {
   cfg: null, spec: null, mapId: 'campo', world: null, veh: null, model: null,
   opt: { time: 'dia', wet: 0, volume: 0.6, units: 'kmh', shadows: 1, pixel: 1, timeScale: 1, telemetry: false, bots: 6 },
   menuOpen: true, paused: false, camMode: 0, camYaw: 0, camPitch: 0.0, camDist: 1, orbitYaw: 0, orbitPitch: 0.16, lookBack: false,
-  keys: {}, steerRaw: 0, steerSm: 0, lights: false, lightMode: 0, fog: false, sigL: false, sigR: false, haz: false, wipers: 0, bulb: 0, miniZoom: 0.35, miniNorth: false, acc: 0, simTime: 0,
+  keys: {}, steerRaw: 0, steerSm: 0, lights: false, lightMode: 0, fog: false, sigL: false, sigR: false, haz: false, wipers: 0, bulb: 0, miniZoom: 0.35, miniNorth: false, acc: 0, simTime: 0, simStep: 0,
   meas: { t100: null, brake: null, top: 0, latG: 0, run: null, dist: 0 }, lap: null,
 };
 window.BD = App;
 
+// ---------------- opções gráficas (salvas no navegador) ----------------
+const GFX_PRESETS = {
+  min:   { name: 'Mínimo',  res: 0.6, shadow: 0, view: 0.35, lod: 2.2, detail: 0.3, live: 8,  dyn: true,  cap: 60, aa: false },
+  low:   { name: 'Baixo',   res: 0.75, shadow: 1, view: 0.5, lod: 1.6, detail: 0.5, live: 14, dyn: true,  cap: 60, aa: false },
+  mid:   { name: 'Médio',   res: 1,   shadow: 2, view: 0.75, lod: 1.2, detail: 0.8, live: 20, dyn: true,  cap: 0,  aa: true },
+  high:  { name: 'Alto',    res: 1.25, shadow: 3, view: 1,  lod: 0.9, detail: 1,   live: 28, dyn: false, cap: 0,  aa: true },
+  ultra: { name: 'Ultra',   res: 1.5, shadow: 3, view: 1.3, lod: 0.65, detail: 1.2, live: 36, dyn: false, cap: 0,  aa: true },
+};
+App.GFX_PRESETS = GFX_PRESETS;
+App.gfx = { preset: 'mid', ...GFX_PRESETS.mid };
+try { const s = JSON.parse(localStorage.getItem('bd_gfx') || 'null'); if (s) Object.assign(App.gfx, s); } catch (e) { /* sem armazenamento */ }
+App.dynRes = 1;
+
 // ---------------- renderer, cena ----------------
 const canvas = $('#c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
-renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !!App.gfx.aa, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio * App.gfx.res, 2));
+renderer.shadowMap.enabled = App.gfx.shadow > 0; renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, 1, 0.12, 6000);
@@ -71,7 +86,7 @@ App.setTime = id => {
   skyMat.uniforms.sunCol.value.setRGB(...T.sun); skyMat.uniforms.night.value = T.night ? 1 : 0;
   sun.color.setRGB(...T.sun); sun.intensity = T.sunI; hemi.intensity = T.amb; hemi.color.set(T.sky[1]); hemi.groundColor.set(0x2a2a24);
   renderer.toneMappingExposure = T.exp;
-  scene.fog = new THREE.Fog(T.fog, 120, App.world ? App.world.fogFar * (1 - 0.45 * App.opt.wet) : 2000);
+  scene.fog = new THREE.Fog(T.fog, 120, App.fogFar());
   scene.background = null;
   if (App.envTex) App.envTex.dispose();
   App.envTex = pmrem.fromScene(skyScene, 0.02).texture; scene.environment = App.envTex;
@@ -81,12 +96,33 @@ App.setTime = id => {
 };
 App.setWet = w => {
   App.opt.wet = w; if (App.world) { App.world.wet = w; for (const rm of (App.world.roadMats || [App.world.roadMat])) if (rm) { rm.roughness = 0.92 - 0.62 * w; rm.color.setScalar(1 - 0.38 * w); } }
-  if (scene.fog && App.world) scene.fog.far = App.world.fogFar * (1 - 0.45 * w);
+  if (scene.fog && App.world) scene.fog.far = App.fogFar();
   toast(w ? 'Pista molhada: aderência reduzida' : 'Pista seca');
 };
 App.setVolume = v => { App.opt.volume = v; audio.setVolume(v); };
-App.setShadows = v => { App.opt.shadows = v; renderer.shadowMap.enabled = !!v; sun.castShadow = !!v; scene.traverse(o => { if (o.material) o.material.needsUpdate = true; }); };
-App.setPixel = v => { App.opt.pixel = v; renderer.setPixelRatio(Math.min(devicePixelRatio * v, 2)); onResize(); };
+App.fogFar = () => (App.world ? App.world.fogFar : 2000) * (1 - 0.45 * App.opt.wet) * App.gfx.view;
+// sombras: 0 desligadas, 1 baixa (1024, 30 m), 2 média (2048, 42 m), 3 alta (4096, 60 m)
+App.setShadows = v => {
+  App.gfx.shadow = +v; App.opt.shadows = v ? 1 : 0;
+  const on = v > 0; renderer.shadowMap.enabled = on; sun.castShadow = on;
+  const size = [0, 1024, 2048, 4096][v] || 2048, ext = [0, 30, 42, 60][v] || 42;
+  if (on) { if (sun.shadow.mapSize.x !== size) { sun.shadow.mapSize.set(size, size); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } } sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.updateProjectionMatrix(); }
+  scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
+};
+App.setPixel = v => { App.gfx.res = v; App.opt.pixel = v; applyPixel(); };
+function applyPixel() { renderer.setPixelRatio(Math.min(devicePixelRatio * App.gfx.res * (App.gfx.dyn ? App.dynRes : 1), 2)); onResize(); }
+App.saveGfx = () => { try { localStorage.setItem('bd_gfx', JSON.stringify(App.gfx)); } catch (e) { /* ok */ } };
+// altera uma opção gráfica (ou aplica um preset inteiro)
+App.setGfx = (k, v) => {
+  const g = App.gfx;
+  if (k === 'preset') { Object.assign(g, GFX_PRESETS[v], { preset: v }); App.setShadows(g.shadow); applyPixel(); }
+  else { g[k] = v; g.preset = 'custom'; if (k === 'shadow') App.setShadows(v); else if (k === 'res') applyPixel(); else if (k === 'dyn') { App.dynRes = 1; applyPixel(); } }
+  if (k === 'preset' || k === 'view') { if (scene.fog) scene.fog.far = App.fogFar(); camera.far = Math.max(800, 6000 * Math.min(1, g.view + 0.2)); camera.updateProjectionMatrix(); }
+  traffic.liveMax = g.live;
+  App.saveGfx();
+  if (App.ui && App.ui.refreshAll) App.ui.refreshAll();
+};
+if (App.gfx.aa === undefined) App.gfx.aa = true;
 
 function toast(msg, ms = 1800) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('on'), ms); }
 App.toast = toast;
@@ -96,7 +132,8 @@ const nextFrame = () => new Promise(r => setTimeout(r, 30));
 // ---------------- som, efeitos ----------------
 const audio = new CarAudio();
 let particles, skid;
-const traffic = new Traffic(App); App.traffic = traffic;
+const traffic = new Traffic(App); App.traffic = traffic; traffic.liveMax = App.gfx.live;
+App.setShadows(App.gfx.shadow);
 App.setBots = n => { App.opt.bots = n; traffic.setCount(n); toast(n ? n + ' bots no tráfego' : 'Sem bots'); };
 
 // ---------------- mapas ----------------
@@ -175,7 +212,8 @@ App.rebuildCar = function (keepPose = true, quick = false) {
   const dmg = v.spec ? JSON.parse(JSON.stringify(v.dmg)) : null;
   v.setSpec(spec); v.trans = cfg.trans;
   if (App.model) { App.scene.remove(App.model.root); App.model.dispose(); }
-  App.model = new CarModel(spec, cfg); scene.add(App.model.root);
+  App.model = spec.car.bike ? new BikeModel(spec, cfg) : new CarModel(spec, cfg); scene.add(App.model.root);
+  v.noReverse = !!spec.car.bike;
   if (keep) {
     const yaw = Math.atan2(-new THREE.Vector3(1, 0, 0).applyQuaternion(keep.q).z, new THREE.Vector3(1, 0, 0).applyQuaternion(keep.q).x);
     const w = App.world, gh = w.heightAt(keep.p.x, keep.p.z);
@@ -505,7 +543,7 @@ function drawHud() {
       { s: 'ESC', on: v.escAct ? blink : !v.spec.esc, col: '#ffb020', off: !v.spec.esc },
       { s: '◎!', lab: 'PNEUS', on: anyWheel, col: '#ffb020' },
       { s: 'SRS', lab: 'AIRBAG', on: v.airbag, col: '#ff3a30' },
-      { s: 'CINTO', on: !App.belt && Math.abs(v.fwdSpeed) > 2 ? blink : !App.belt, col: '#ff3a30' },
+      { s: 'CINTO', on: App.spec.car.bike ? false : (!App.belt && Math.abs(v.fwdSpeed) > 2 ? blink : !App.belt), col: '#ff3a30' },
       { arrow: 1, on: (App.sigR || App.haz) && blink, col: '#3cff6a' },
     ];
     const row2 = [
@@ -641,6 +679,7 @@ function drawTelemetry(u, x0, y0) {
 let last = performance.now(), fpsT = 0, frames = 0;
 function frame(now) {
   requestAnimationFrame(frame);
+  if (App.gfx.cap && now - last < 1000 / App.gfx.cap - 2) return;
   let dt = Math.min(0.05, (now - last) / 1000); last = now;
   App.step(dt);
 }
@@ -652,7 +691,7 @@ App.step = function (dt, render = true) {
     updateInputs(dt);
     App.acc += dt * App.opt.timeScale;
     let n = 0;
-    while (App.acc >= DT && n < 40) { v.step(DT); traffic.step(DT, v); App.acc -= DT; App.simTime += DT; n++; }
+    while (App.acc >= DT && n < 40) { v.step(DT); traffic.step(DT, v, App.simStep++); App.acc -= DT; App.simTime += DT; n++; }
     if (n === 40) App.acc = 0;
     w.updateProps(dt * App.opt.timeScale, v);
     if (w.anim) w.anim(performance.now() / 1000);
@@ -660,9 +699,10 @@ App.step = function (dt, render = true) {
     updateMeasure(dt * App.opt.timeScale);
   }
   traffic.update(dt, run);
+  if (v.spec.bike) { if (v.fallen && !App._fell) { App._fell = true; toast('Você caiu! Aperte R para levantar a moto', 3500); } else if (!v.fallen) App._fell = false; }
   if (run && App.rm && App.real && now_() - (App._stT || 0) > 0.5) { App._stT = now_(); App.rm.streamTick(App); }
   if (run && now_() - (App._limT || 0) > 0.4) { App._limT = now_(); App.limit = traffic.limitAt(v.pos.x, v.pos.z); }
-  if (run && !App.belt && Math.abs(v.fwdSpeed) > 7 && now_() - (App._beltT || 0) > 9) { App._beltT = now_(); audio.chime(); }
+  if (run && !App.belt && !App.spec.car.bike && Math.abs(v.fwdSpeed) > 7 && now_() - (App._beltT || 0) > 9) { App._beltT = now_(); audio.chime(); }
   // luzes
   const reversing = v.gear === -1 && v.pedalThr > 0.05;
   const blink = Math.floor(performance.now() / 330) % 2 === 0;
@@ -676,6 +716,7 @@ App.step = function (dt, render = true) {
   sun.position.set(v.pos.x + sunDir.x * 120, v.pos.y + sunDir.y * 120, v.pos.z + sunDir.z * 120); sun.target.position.copy(v.pos);
   if (render) {
     if (!App.staticCam) updateCamera(dt);
+    if (w.updateLOD) w.updateLOD(camera.position, App.gfx.lod || 1);
     sky.position.copy(camera.position); skyEnv.position.set(0, 0, 0);
     if (particles) particles.update(dt * (run ? 1 : 0), camera);
     // áudio
@@ -684,6 +725,8 @@ App.step = function (dt, render = true) {
     renderer.render(scene, camera);
     drawHud();
     frames++; fpsT += dt; if (fpsT > 1) { App.fps = Math.round(frames / fpsT); frames = 0; fpsT = 0; }
+    // resolução dinâmica: ajusta a escala de renderização para manter ~55 fps
+    if (App.gfx.dyn && run) { App._ft = (App._ft || 16) * 0.95 + dt * 1000 * 0.05; if (now_() - (App._dynT || 0) > 1.2) { App._dynT = now_(); const t = App._ft; let d = App.dynRes; if (t > 19.5) d = Math.max(0.55, d - 0.1); else if (t < 14.5) d = Math.min(1, d + 0.05); if (Math.abs(d - App.dynRes) > 0.01) { App.dynRes = d; applyPixel(); } } }
   }
 };
 function onResize() {
@@ -702,7 +745,7 @@ addEventListener('resize', onResize);
   // carro provisório (mundo ainda não existe)
   App.spec = buildSpec(App.cfg); App.veh.world = { heightAt: () => 0, normalAt: (x, z, o) => o.set(0, 1, 0), surfAt: () => 0, queryStatic: (x, z, r, o) => { o.length = 0; return o; }, clampBounds() { }, wet: 0 };
   App.veh.setSpec(App.spec);
-  App.model = new CarModel(App.spec, App.cfg); scene.add(App.model.root);
+  App.model = App.spec.car.bike ? new BikeModel(App.spec, App.cfg) : new CarModel(App.spec, App.cfg); scene.add(App.model.root);
   await App.loadMap('campo');
   App.rebuildCar(false);
   App.setTime('dia');

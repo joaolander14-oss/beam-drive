@@ -38,7 +38,7 @@ function buildNav(w) {
   return null;
 }
 
-const LIVE_R = 1000, LIVE_MAX = 28, YAW = v => Math.atan2(-v.ax.z, v.ax.x);
+const LIVE_R = 1000, YAW = v => Math.atan2(-v.ax.z, v.ax.x);
 
 // Cada bot é um REGISTRO (posição guardada). Só os registros a até 1 km do jogador viram carros de verdade
 // (física + modelo 3D + colisão); os demais ficam parados no lugar, sem custo, e voltam quando você chega perto.
@@ -54,7 +54,7 @@ export class Traffic {
   sync() { for (const b of this.bots) this.saveRec(b); }
   saveRec(b) { const r = b.rec, v = b.v; if (!r || !isFinite(v.pos.x)) return; r.x = v.pos.x; r.z = v.pos.z; r.yaw = YAW(v); r.sp = Math.max(0, v.fwdSpeed); }
   shift(ox, oz) { for (const r of this.recs) { r.x -= ox; r.z -= oz; } }
-  dispose(b) { this.app.scene.remove(b.model.root); b.model.dispose(); if (b.rec) b.rec.live = null; }
+  dispose(b) { this.app.scene.remove(b.model.root); b.model.dispose(); if (b.proxy) { this.app.scene.remove(b.proxy); b.proxy.children[0].material.dispose(); b.proxy.children.forEach(c => c.geometry.dispose()); } if (b.rec) b.rec.live = null; }
   clearLive() { for (const b of this.bots) { this.saveRec(b); this.dispose(b); } this.bots = []; }
   clear() { this.clearLive(); this.recs = []; }
 
@@ -113,7 +113,7 @@ export class Traffic {
     const cand = []; for (const r of this.recs) { if (r.live || (r.retry && t < r.retry) || !this.inWin(r)) continue; const d = Math.hypot(r.x - P.x, r.z - P.z); if (d < LIVE_R) cand.push([d, r]); }
     cand.sort((p, q) => p[0] - q[0]);
     let budget = now ? 14 : 2;
-    for (const [d, r] of cand) { if (this.bots.length >= LIVE_MAX || budget <= 0) break; budget--; const b = this.makeBot(r); if (b) this.bots.push(b); else r.retry = t + 8000; }
+    for (const [d, r] of cand) { if (this.bots.length >= (this.liveMax || 28) || budget <= 0) break; budget--; const b = this.makeBot(r); if (b) this.bots.push(b); else r.retry = t + 8000; }
   }
 
   makeBot(rec) {
@@ -121,8 +121,13 @@ export class Traffic {
     const spec = buildSpec(cfg);
     const v = new Vehicle(this.world); v.setSpec(spec); v.noReverse = true; v.trans = 'auto'; v.fuel = v.tank = 1e9;
     const model = new CarModel(spec, cfg); this.app.scene.add(model.root);
-    const b = { v, model, cfg, spec, rec, pts: [], pi: 0, cur: null, cleared: new Map(), waitT: 0, stuckT: 0, flipT: 0, sig: 0, steer: 0, hold: false, speedLim: 12, age: 0 };
-    if (!this.placeAt(b, rec.x, rec.z, rec.yaw, rec.sp)) { this.app.scene.remove(model.root); model.dispose(); return null; }
+    // versão simples (caixa) usada quando o carro está longe: poucos triângulos
+    const bl = spec.boxLow, bc = spec.boxCab, proxy = new THREE.Group();
+    const pm = new THREE.MeshStandardMaterial({ color: rec.paint, roughness: 0.5, metalness: 0.3 });
+    for (const bx of [bl, bc]) { const m = new THREE.Mesh(new THREE.BoxGeometry(bx.h.x * 2, bx.h.y * 2, bx.h.z * 2), pm); m.position.set(bx.c.x, bx.c.y, bx.c.z); proxy.add(m); }
+    proxy.visible = false; this.app.scene.add(proxy);
+    const b = { v, model, proxy, cfg, spec, rec, pts: [], pi: 0, cur: null, cleared: new Map(), waitT: 0, stuckT: 0, flipT: 0, sig: 0, steer: 0, hold: false, speedLim: 12, age: 0 };
+    if (!this.placeAt(b, rec.x, rec.z, rec.yaw, rec.sp)) { this.dispose(b); return null; }
     rec.live = b;
     return b;
   }
@@ -313,17 +318,23 @@ export class Traffic {
         }
       }
     }
+    this.fr = (this.fr || 0) + 1; const P = app.veh.pos, vd = app.fogFar ? app.fogFar() : 2000;
     for (const b of this.bots) {
       b.v.events.length = 0;
       for (const im of b.v.impacts) b.model.dentLocal(im.p, im.n, im.v);
       b.v.impacts.length = 0;
+      const dd = Math.hypot(b.v.pos.x - P.x, b.v.pos.z - P.z), near = dd < 150;
+      b.model.root.visible = near; b.proxy.visible = !near && dd < vd;
+      if (!near) { b.proxy.position.copy(b.v.pos); b.proxy.quaternion.copy(b.v.quat); continue; }
       b.model.update(b.v, dt, { lights: app.lightMode > 0, mode: app.night ? 2 : 0, brake: b.v.pedalBrk > 0.05, sigL: b.sig === 1, sigR: b.sig === 2, blink, wipers: 0 });
     }
   }
 
-  step(DT, player) {
+  step(DT, player, k = 0) {
     const bots = this.bots; if (!bots.length) return;
-    for (const b of bots) b.v.step(DT);
+    const P = player.pos;
+    // carros longe do jogador (>110 m) usam passo de 120 Hz (metade do custo de física)
+    for (const b of bots) { const dx = b.v.pos.x - P.x, dz = b.v.pos.z - P.z; b.far = dx * dx + dz * dz > 12100; if (!b.far) b.v.step(DT); else if ((k & 1) === 0) b.v.step(DT * 2); }
     for (let i = 0; i < bots.length; i++) {
       vehicleCollide(player, bots[i].v);
       for (let j = i + 1; j < bots.length; j++) vehicleCollide(bots[i].v, bots[j].v);

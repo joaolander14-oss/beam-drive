@@ -86,7 +86,7 @@ function inst(w, geo, material, mats, colors) {
   if (!mats.length) return null;
   const im = new THREE.InstancedMesh(geo, material, mats.length);
   mats.forEach((m, i) => { im.setMatrixAt(i, m); if (colors) im.setColorAt(i, colors[i]); });
-  im.castShadow = true; im.receiveShadow = true; im.frustumCulled = false; w.group.add(im); return im;
+  im.castShadow = true; im.receiveShadow = true; im.computeBoundingSphere(); w.group.add(im); return im;
 }
 
 export function addStreetDetails(w, D, roads, bmask) {

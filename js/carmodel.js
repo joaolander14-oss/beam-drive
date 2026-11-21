@@ -699,11 +699,17 @@ export class CarModel {
     const p = new V3(spec.noseX - lp.x, lp.y + car.cgH, -lp.z);
     const n = new V3(-ln.x, ln.y, -ln.z).normalize();
     // n aponta do obstáculo para o carro = direção para dentro da lataria
-    const depth = clamp(0.020 * Math.pow(Math.max(0, speed - 1.2), 1.25), 0.01, 0.45);
-    const rad = clamp(0.50 + 0.04 * speed, 0.5, 1.5);
-    // dobra: junta um pouco ao longo da direção de impacto (amassado "para dentro")
-    const a = this.low.dent(p, n, depth, rad), b = this.gh.dent(p, n, depth * 0.9, rad);
-    if (a || b) { this.low.refresh(true); this.gh.refresh(true); }
+    // amassado proporcional à energia: ~0,35 m a 50 km/h, ~0,8 m a 100 km/h, ~1,1 m a 130 km/h (zona de deformação)
+    const e = Math.max(0, speed - 1.2), depth = clamp(0.0075 * Math.pow(e, 1.45), 0.01, 1.2);
+    const rad = clamp(0.55 + 0.055 * speed, 0.55, 2.3), maxD = 0.35 + depth * 1.25;
+    const a = this.low.dent(p, n, depth, rad, maxD), b = this.gh.dent(p, n, depth * 0.9, rad, maxD);
+    let more = a || b;
+    // batida de frente/traseira forte: a lataria amassa em toda a largura (não só no ponto de contato)
+    if (speed > 7 && Math.abs(ln.x) > 0.6) {
+      const half = car.W * 0.36;
+      for (const sz of [-1, 1]) { const q = new V3(p.x, p.y, p.z + sz * half), a2 = this.low.dent(q, n, depth * 0.7, rad * 0.9, maxD), b2 = this.gh.dent(q, n, depth * 0.6, rad * 0.9, maxD); more = more || a2 || b2; }
+    }
+    if (more) { this.low.refresh(true); this.gh.refresh(true); }
     // peças soltas/ deslocadas
     for (const d of this.details) {
       const dd = d.p0.distanceTo(p);

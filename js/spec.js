@@ -116,7 +116,7 @@ export function buildSpec(cfg) {
     const [tb, td2] = car.trav;
     const sRest = 0.30, sMin = sRest - tb, sMax = sRest + td2;
     const yWc = td.R - cgH;
-    const I_w = 0.8 * wm.tire * td.R * td.R + 0.5 * wm.rim * Math.pow(td.R * 0.72, 2) + 0.12;
+    const I_w = (0.8 * wm.tire * td.R * td.R + 0.5 * wm.rim * Math.pow(td.R * 0.72, 2) + 0.12) * (car.bike ? 0.5 : 1);   // moto: as rodas são pares, cada uma com metade da inércia
     return {
       idx, axle, side, x, y: yWc, z, R: td.R, width: td.w, rim: td.rim, Iw: I_w, mass: wm.total,
       mountL: new THREE.Vector3(x, yWc + sRest, z),
@@ -189,17 +189,19 @@ export function buildSpec(cfg) {
       hull.push(new THREE.Vector3(noseX - x, y - car.cgH, z));
     }
   };
-  const lowTop = Math.min(belt, 0.95);
-  pushBox(0.02, Lm - 0.02, clearance, lowTop, W / 2 - 0.02, 7, 3, 3);
-  pushBox(xr0 + 0.1, xr1 - 0.1, belt, car.H - 0.03, sp.roofW * W / 2 * 0.9, 3, 2, 3);
+  const lowTop = car.bike ? 0.80 : Math.min(belt, 0.95);
+  const Wh = car.bike ? 0.22 : W;   // moto: casco estreito (a moto inclina nas curvas sem raspar no chão)
+  pushBox(0.02, Lm - 0.02, clearance, lowTop, Wh / 2 - 0.02, 7, 3, car.bike ? 2 : 3);
+  pushBox(xr0 + 0.1, xr1 - 0.1, car.bike ? lowTop : belt, car.bike ? car.H * 0.82 : car.H - 0.03, car.bike ? 0.18 : sp.roofW * W / 2 * 0.9, 3, 2, 3);
   // rodas (pontos extremos)
   for (const w of wheels) {
     for (const [dx, dz] of [[0, 1], [0.8, 0.5], [-0.8, 0.5]]) {
       hull.push(new THREE.Vector3(w.x + dx * w.R, w.y, w.z + w.side * (dz > 0.9 ? w.width / 2 + 0.03 : w.width / 2 * 0.2)));
     }
   }
-  const boxLow = { c: new THREE.Vector3(noseX - Lm / 2, (clearance + lowTop) / 2 - car.cgH, 0), h: new THREE.Vector3(Lm / 2, (lowTop - clearance) / 2, W / 2) };
-  const boxCab = { c: new THREE.Vector3(noseX - (xr0 + xr1) / 2, (belt + car.H) / 2 - car.cgH, 0), h: new THREE.Vector3((xr1 - xr0) / 2 * 0.85, (car.H - belt) / 2, sp.roofW * W / 2 * 0.9) };
+  const boxLow = { c: new THREE.Vector3(noseX - Lm / 2, (clearance + lowTop) / 2 - car.cgH, 0), h: new THREE.Vector3(Lm / 2, (lowTop - clearance) / 2, Wh / 2) };
+  const boxCab = car.bike ? { c: new THREE.Vector3(noseX - (xr0 + xr1) / 2, (lowTop + car.H * 0.82) / 2 - car.cgH, 0), h: new THREE.Vector3((xr1 - xr0) / 2 * 0.5, (car.H * 0.82 - lowTop) / 2, 0.18) }
+    : { c: new THREE.Vector3(noseX - (xr0 + xr1) / 2, (belt + car.H) / 2 - car.cgH, 0), h: new THREE.Vector3((xr1 - xr0) / 2 * 0.85, (car.H - belt) / 2, sp.roofW * W / 2 * 0.9) };
 
   // posições para luzes e câmeras (locais, origem no CG)
   const driverEye = new THREE.Vector3(noseX - (sp.xc * Lm + 0.80 - 0.04), 0.46 * car.H + 0.50 - car.cgH, sp.beetle ? -0.34 : -0.37);
@@ -208,7 +210,7 @@ export function buildSpec(cfg) {
     car, cfg, eng: engine, gearInfo: gear, driveline, wheels, mass: M, a, distF, cgH, I,
     cdA, cdAside: cdA * 2.6, clF, clR, WB, L: Lm, W, H: car.H,
     hull, boxLow, boxCab, noseX, meshOff, driverEye,
-    tank: isEV ? (eng.battery || 200) * 0.17 : clamp(35 + M / 40, 35, 120), diesel: eng.kind === 'diesel',
+    bike: !!car.bike, tank: isEV ? (eng.battery || 200) * 0.17 : car.bike ? car.tank : clamp(35 + M / 40, 35, 120), diesel: eng.kind === 'diesel',
     steerMax: car.steer * fx.steer, coolMult: fx.cool, nitroS: fx.nitroS, fx, ack: cfg.ack, rcH: 0.07,
     abs: cfg.abs, tc: cfg.tc, esc: cfg.esc, steerAssist: cfg.steerAssist, trans: cfg.trans,
     isEV, tdF, tdR, clearance: clearance + rhm,

@@ -246,19 +246,30 @@ export class World {
       colorFn(x, z, h, s, ny / l, c);
       col[k * 3] = c[0]; col[k * 3 + 1] = c[1]; col[k * 3 + 2] = c[2];
     }
-    const idx = new Uint32Array(N * N * 6); let p = 0;
-    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-      const a = j * W + i, b = a + 1, d = a + W, e = d + 1;
-      idx[p++] = a; idx[p++] = d; idx[p++] = b; idx[p++] = b; idx[p++] = d; idx[p++] = e;
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-    g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-    g.setIndex(new THREE.BufferAttribute(idx, 1));
     const m = new THREE.MeshStandardMaterial({ vertexColors: true, map: makeTex('detail', 256), roughness: 0.96, metalness: 0 });
-    const mesh = new THREE.Mesh(g, m); mesh.receiveShadow = true; mesh.frustumCulled = false;
-    this.group.add(mesh); this.terrainMesh = mesh;
-    return mesh;
+    const attrs = { position: new THREE.BufferAttribute(pos, 3), normal: new THREE.BufferAttribute(nor, 3), color: new THREE.BufferAttribute(col, 3), uv: new THREE.BufferAttribute(uv, 2) };
+    // blocos de 48x48 células, cada um com 3 níveis de detalhe (passo 1, 2 e 4): só o que está na tela é desenhado
+    const T = 48, tiles = []; this.terrainTiles = tiles;
+    for (let tj = 0; tj < N; tj += T) for (let ti = 0; ti < N; ti += T) {
+      const i1 = Math.min(N, ti + T), j1 = Math.min(N, tj + T), lods = [];
+      for (const st of [1, 2, 4]) {
+        const ix = []; for (let j = tj; j < j1; j += st) for (let i = ti; i < i1; i += st) { const i2 = Math.min(i1, i + st), j2 = Math.min(j1, j + st), a2 = j * W + i, b2 = j * W + i2, d2 = j2 * W + i, e2 = j2 * W + i2; ix.push(a2, d2, b2, b2, d2, e2); }
+        lods.push(new THREE.BufferAttribute(new Uint32Array(ix), 1));
+      }
+      const g = new THREE.BufferGeometry(); for (const k in attrs) g.setAttribute(k, attrs[k]); g.setIndex(lods[0]);
+      let lo = 1e9, hi = -1e9; for (let j = tj; j <= j1; j += 2) for (let i = ti; i <= i1; i += 2) { const h = this.H[j * W + i]; lo = Math.min(lo, h); hi = Math.max(hi, h); }
+      const cx = this.x0 + (ti + i1) / 2 * cs, cz = this.z0 + (tj + j1) / 2 * cs, rad = Math.hypot((i1 - ti) * cs, (j1 - tj) * cs) / 2 + 2, cy = (lo + hi) / 2;
+      g.boundingSphere = new THREE.Sphere(new THREE.Vector3(cx, cy, cz), Math.hypot(rad, (hi - lo) / 2 + 1));
+      const mesh = new THREE.Mesh(g, m); mesh.receiveShadow = true; this.group.add(mesh);
+      tiles.push({ mesh, g, lods, cx, cz, lod: 0 });
+    }
+    this.terrainMesh = tiles[0] && tiles[0].mesh;
+    return this.terrainMesh;
+  }
+  // troca o nível de detalhe dos blocos de terreno conforme a distância da câmera (bias maior = detalhe mais cedo)
+  updateLOD(cam, bias = 1) {
+    const t = this.terrainTiles; if (!t) return; const d1 = 450 / bias, d2 = 1000 / bias;
+    for (const k of t) { const d = Math.hypot(k.cx - cam.x, k.cz - cam.z) - 40; const l = d < d1 ? 0 : d < d2 ? 1 : 2; if (l !== k.lod) { k.lod = l; k.g.setIndex(k.lods[l]); } }
   }
 
   // ---------- colisores estáticos ----------

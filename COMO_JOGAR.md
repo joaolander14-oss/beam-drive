@@ -8,7 +8,7 @@ embreagem, câmbio e diferenciais) e **deformação da lataria** nas batidas.
 - Dê dois cliques em **Jogar.bat** (precisa de Python) — abre `http://localhost:8330`
 - ou: `python serve.py 8330` dentro desta pasta.
 
-## Carros (234 modelos prontos)
+## Veículos (462 carros + 133 motos)
 Inspirados em carros reais — de Fiat Uno e Fusca a Ferrari F40, Porsche 911 GT3, Tesla Model S Plaid, Land Rover Defender, Ford F-150 Raptor, Rimac Nevera…
 Cada um tem ficha técnica própria (massa, motor com curva de torque, câmbio, tração, pneus, suspensão). Há busca e filtro por classe no menu Carros.
 (Nomes de marcas são usados apenas para identificar o modelo que inspirou o carro; o projeto não tem relação com as fabricantes.)
@@ -81,3 +81,8 @@ No Mundo Real você desenha uma área grande (até 30 km de lado) e escolhe o **
 - **Ruas niveladas:** o terreno é terraplenado sob as ruas — perfil suave, inclinação máxima de ~9 %, cruzamentos na mesma cota, pista plana de borda a borda e talude suave até o terreno natural.
 - **Calçadas:** são interrompidas onde outra via cruza, com meio-fio fechado nas pontas.
 - **Mais de 100 placas diferentes** (limites de velocidade 20–120, proibições, obrigações, advertências, informação, indicação, preferencial). Vêm das tags do OpenStreetMap (traffic_sign, hazard, passagens de nível, hospitais, postos…) e, com "sinalização genérica", são distribuídas pelas vias (curvas, cruzamentos, semáforo à frente, escolas, becos sem saída…).
+
+## Colisão realista, gráficos e motos
+- **Batidas:** o amassado agora é proporcional à energia (~0,3 m a 50 km/h, ~0,8 m a 100 km/h, mais de 1 m acima de 120 km/h) e atinge toda a largura da frente/traseira; motor, radiador e suspensão sofrem dano de verdade (rodas desalinhadas), airbag e peças soltas.
+- **Gráficos (Opções):** presets Mínimo/Baixo/Médio/Alto/Ultra e controles individuais — escala de resolução, resolução dinâmica (ajusta sozinha para manter o FPS), sombras (4 níveis), distância de visão, detalhe do terreno à distância, densidade de objetos, bots ativos ao mesmo tempo, limite de FPS e antialiasing. Otimizações automáticas: terreno em blocos com nível de detalhe, só desenha o que está na tela, bots distantes viram caixas simples e usam física a 120 Hz.
+- **Motos (aba Carros → filtro "🏍 Motos"):** 133 motos reais (esportivas, naked, trail, custom, touring, clássicas, scooters, off-road, elétricas) com física própria de duas rodas: inclinação nas curvas, o piloto virtual mantém o equilíbrio, empinadas e frenagens com a roda traseira levantando, queda se passar do limite (aperte R para levantar). Câmbio sequencial/CVT e motores com curva de torque própria.

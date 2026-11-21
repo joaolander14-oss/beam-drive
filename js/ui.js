@@ -121,14 +121,15 @@ export class UI {
 
   // ---------- carros ----------
   renderCars() {
-    const p = $('#p-car'); const F = this.carFilter || (this.carFilter = { q: '', cls: '', sort: 'name' });
+    const p = $('#p-car'); const F = this.carFilter || (this.carFilter = { q: '', cls: '', sort: 'name', kind: '' });
     p.innerHTML = '';
-    const ids = Object.keys(CARS), classes = [...new Set(ids.map(i => CARS[i].cls))].sort();
+    const allIds = Object.keys(CARS), ids = allIds.filter(i => !F.kind || (F.kind === 'bike') === !!CARS[i].bike), classes = [...new Set(ids.map(i => CARS[i].cls))].sort();
     const bar = el('div', 'row2');
-    const q = el('input'); q.type = 'text'; q.placeholder = `Buscar entre ${ids.length} carros…`; q.value = F.q; q.style.minWidth = '220px';
+    const ks = el('select'); ks.innerHTML = [['', `Todos (${allIds.length})`], ['car', `🚗 Carros (${allIds.filter(i => !CARS[i].bike).length})`], ['bike', `🏍 Motos (${allIds.filter(i => CARS[i].bike).length})`]].map(([k, v]) => `<option value="${k}"${F.kind === k ? ' selected' : ''}>${v}</option>`).join(''); ks.onchange = () => { F.kind = ks.value; F.cls = ''; this.renderCars(); };
+    const q = el('input'); q.type = 'text'; q.placeholder = `Buscar entre ${ids.length} veículos…`; q.value = F.q; q.style.minWidth = '220px';
     const cs = el('select'); cs.innerHTML = '<option value="">Todas as classes</option>' + classes.map(c => `<option value="${c}"${F.cls === c ? ' selected' : ''}>${c}</option>`).join('');
     const so = el('select'); so.innerHTML = [['name', 'Ordem alfabética'], ['hp', 'Mais potentes'], ['mass', 'Mais leves'], ['fast', 'Mais rápidos (0–100)']].map(([k, v]) => `<option value="${k}"${F.sort === k ? ' selected' : ''}>${v}</option>`).join('');
-    bar.append(q, cs, so, el('span', 'hint', `${ids.length} modelos prontos · cada um com ficha técnica, motor, câmbio e suspensão próprios`));
+    bar.append(ks, q, cs, so, el('span', 'hint', `${ids.length} modelos prontos · cada um com ficha técnica, motor, câmbio e suspensão próprios`));
     p.append(bar);
     const grid = el('div', 'cards'); p.append(grid);
     const draw = () => {
@@ -144,7 +145,7 @@ export class UI {
         const d = el('div', 'card' + (this.app.cfg.car === id ? ' sel' : ''));
         const kind = e.kind === 'ev' ? 'Elétrico' : e.kind === 'turbo' ? 'Turbo' : e.kind === 'sc' ? 'Supercharger' : e.kind === 'diesel' ? 'Diesel' : 'Aspirado';
         d.innerHTML = `<div class="sw" style="background:${c.color}"></div><h3>${c.name}</h3><div class="sub">${c.sub}</div>
-          <div><span class="tag">${c.cls}</span><span class="tag">${c.drive.toUpperCase()}</span><span class="tag">${kind}</span></div>
+          <div><span class="tag">${c.cls}</span><span class="tag">${c.bike ? 'MOTO' : c.drive.toUpperCase()}</span><span class="tag">${kind}</span></div>
           <div class="stats"><div><b>${fmt(e.peakHp)}</b><span>${e.kind === 'ev' ? 'cv (pico)' : 'cv'}</span></div><div><b>${fmt(c.mass + 75)}</b><span>kg</span></div><div><b class="t100">${cache[id] ? cache[id] : '…'}</b><span>0–100 s</span></div></div>`;
         d.onclick = () => { this.app.selectCar(id); draw(); };
         grid.append(d);
@@ -185,8 +186,19 @@ export class UI {
     const wet = el('input'); wet.type = 'checkbox'; wet.checked = o.wet > 0; wet.onchange = () => this.app.setWet(wet.checked ? 1 : 0); row('Pista molhada (menos aderência)', wet);
     const vol = el('input'); vol.type = 'range'; vol.min = 0; vol.max = 1; vol.step = 0.05; vol.value = o.volume; vol.oninput = () => this.app.setVolume(+vol.value); row('Volume', vol);
     row('Unidade de velocidade', sel([['kmh', 'km/h'], ['mph', 'mph']], o.units, v => { o.units = v; }));
-    row('Sombras', sel([[1, 'Ligadas'], [0, 'Desligadas (mais FPS)']], o.shadows, v => this.app.setShadows(+v)));
-    row('Resolução de renderização', sel([[1, 'Normal'], [1.5, 'Alta'], [0.75, 'Baixa (mais FPS)']], o.pixel, v => this.app.setPixel(+v)));
+    // ---- gráficos ----
+    const G = this.app.gfx, gset = (k, v) => this.app.setGfx(k, v), chk = (k, label, note = '') => { const c = el('input'); c.type = 'checkbox'; c.checked = !!G[k]; c.onchange = () => gset(k, c.checked); row(label + note, c); };
+    row('Qualidade gráfica (preset)', sel([...Object.entries(this.app.GFX_PRESETS).map(([k, v]) => [k, v.name]), ['custom', 'Personalizado']], G.preset, v => { if (v !== 'custom') gset('preset', v); }));
+    row('Escala de resolução', sel([[0.5, '50%'], [0.6, '60%'], [0.75, '75%'], [1, '100%'], [1.25, '125%'], [1.5, '150%'], [2, '200%']], G.res, v => gset('res', +v)));
+    chk('dyn', 'Resolução dinâmica', ' (ajusta sozinha para manter o FPS)');
+    row('Sombras', sel([[0, 'Desligadas'], [1, 'Baixa'], [2, 'Média'], [3, 'Alta']], G.shadow, v => gset('shadow', +v)));
+    row('Distância de visão', sel([[0.35, 'Muito curta'], [0.5, 'Curta'], [0.75, 'Média'], [1, 'Longa'], [1.3, 'Muito longa']], G.view, v => gset('view', +v)));
+    row('Detalhe do terreno à distância', sel([[2.2, 'Mínimo'], [1.6, 'Baixo'], [1.2, 'Médio'], [0.9, 'Alto'], [0.65, 'Máximo']].map(x => [1 / x[0], x[1]]).map(x => [x[0].toFixed(3), x[1]]), (1 / G.lod).toFixed(3), v => gset('lod', 1 / +v)));
+    row('Densidade de objetos (árvores…)', sel([[0.3, '30%'], [0.5, '50%'], [0.8, '80%'], [1, '100%'], [1.2, '120%']], G.detail, v => gset('detail', +v)));
+    row('Carros de bots ativos ao mesmo tempo', sel([[8, '8'], [14, '14'], [20, '20'], [28, '28'], [36, '36']], G.live, v => gset('live', +v)));
+    row('Limite de FPS', sel([[0, 'Sem limite'], [30, '30'], [60, '60'], [120, '120']], G.cap, v => gset('cap', +v)));
+    chk('aa', 'Suavização de bordas (AA)', ' — vale ao recarregar a página');
+    grid.append(el('div', 'hint', 'Densidade de objetos vale no próximo mapa gerado. Dica: com pouco FPS use o preset Baixo ou Mínimo.'), el('span'));
     row('Velocidade da simulação', sel([[1, 'Normal (1×)'], [0.5, 'Câmera lenta 0,5×'], [0.2, 'Câmera lenta 0,2×'], [0.05, 'Câmera lentíssima']], o.timeScale, v => { o.timeScale = +v; }));
     { const r = el('input'); r.type = 'range'; r.min = 0; r.max = 200; r.value = o.bots; r.onchange = () => this.app.setBots(+r.value); row('Tráfego de bots (0–200)', r); }
     const tel = el('input'); tel.type = 'checkbox'; tel.checked = o.telemetry; tel.onchange = () => { o.telemetry = tel.checked; }; row('Mostrar telemetria (carga/derrapagem)', tel);
@@ -216,19 +228,21 @@ export class UI {
     const t = $('#gtabs'); t.innerHTML = '';
     const n = countOptions();
     t.append(el('div', 'hint', `<b>${n.total}</b> opções de personalização (${n.catalog} peças/visuais em ${n.categories} categorias + ${n.base} configurações base) — sem contar o carro inteiro`));
-    for (const g of this.allGroups()) { const b = el('button', g.id === this.gtab ? 'on' : '', g.name); b.onclick = () => { this.gtab = g.id; this.renderGarage(); }; t.append(b); }
+    for (const g of this.groupsFor()) { const b = el('button', g.id === this.gtab ? 'on' : '', g.name); b.onclick = () => { this.gtab = g.id; this.renderGarage(); }; t.append(b); }
     const rb = el('button', 'sm', '↺ Original'); rb.style.marginLeft = 'auto'; rb.onclick = () => this.app.resetCfg(); t.append(rb);
   }
 
   allGroups() {
     if (this._groups) return this._groups;
     const extra = CAT_GROUPS.map(g => ({ id: g.id, name: g.name, items: g.keys.map(k => ({ t: 'part', key: k })).concat(g.id === 'paintp' ? [{ k: 'stripeColor', t: 'color', label: 'Cor dos adesivos / listras' }] : []) }));
-    return (this._groups = [...GARAGE, ...extra]);
+    this._groups = [...GARAGE, ...extra]; return this._groups;
   }
+  // abas da garagem: motos não têm aerodinâmica de carro, tração 4x4, interior etc.
+  groupsFor() { const all = this.allGroups(); if (!(this.app.spec && this.app.spec.car.bike)) return all; const hide = new Set(['drive', 'aero', 'aerop', 'bodyp', 'intp', 'offp', 'drivep']); return all.filter(g => !hide.has(g.id)); }
 
   renderGarage() {
     this.buildGarageTabs();
-    const grp = this.allGroups().find(g => g.id === this.gtab), c = this.app.cfg, box = $('#gctl'); box.innerHTML = '';
+    const grp = this.groupsFor().find(g => g.id === this.gtab) || this.groupsFor()[0], c = this.app.cfg, box = $('#gctl'); box.innerHTML = '';
     for (const it of grp.items) {
       if (it.t === 'part') {
         const cat = CATS[it.key]; if (cat.show && !cat.show(c)) continue;
