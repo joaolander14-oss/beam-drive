@@ -87,16 +87,21 @@ export function buildRealWorld(D) {
 
   // prédios (malha única por lotes + colisões em caixas orientadas)
   const R = rnd(11), pal = [0xd8d0c4, 0xc8c0b4, 0xb8b4ac, 0xe0d8cc, 0xa8a8a8, 0xc4b8a4, 0xb0a090, 0xd0d4d8];
-  const blds = D.buildings.slice().sort((a, b) => Math.hypot(a.pts[0][0], a.pts[0][1]) - Math.hypot(b.pts[0][0], b.pts[0][1])).slice(0, 3500);
-  let batch = [];
+  const key = b => Math.floor(b.pts[0][0] / 110) * 10007 + Math.floor(b.pts[0][1] / 110);
+  const blds = D.buildings.slice(0, 20000).sort((a, b) => key(a) - key(b));
+  const COLL_R = 420, COLL_MAX = 1600; let ncoll = 0;
+  const wcv = document.createElement('canvas'); wcv.width = wcv.height = 64; { const g = wcv.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, 64, 64); g.fillStyle = '#7f8c99'; for (let y = 6; y < 64; y += 21) for (let x = 6; x < 64; x += 21) g.fillRect(x, y, 11, 12); }
+  const wtex = new THREE.CanvasTexture(wcv); wtex.wrapS = wtex.wrapT = THREE.RepeatWrapping; wtex.colorSpace = THREE.SRGBColorSpace; wtex.repeat.set(1 / 3.4, 1 / 3.4); wtex.anisotropy = 4;
+  let batch = [], lastKey = null;
   const flush = () => {
     if (!batch.length) return;
     const g = mergeGeometries(batch, false); batch.forEach(b => b.dispose()); batch = [];
     if (!g) return;
-    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.02 }));
-    m.castShadow = m.receiveShadow = true; m.frustumCulled = false; w.group.add(m);
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, map: wtex, roughness: 0.85, metalness: 0.02 }));
+    m.castShadow = m.receiveShadow = true; w.group.add(m);
   };
   for (const b of blds) {
+    const kk = key(b); if (lastKey !== null && kk !== lastKey) flush(); lastKey = kk;
     try {
       const pts = b.pts.slice(); if (pts.length > 1 && pts[0][0] === pts[pts.length - 1][0] && pts[0][1] === pts[pts.length - 1][1]) pts.pop();
       if (pts.length < 3) continue;
@@ -109,7 +114,9 @@ export function buildRealWorld(D) {
       const c = new THREE.Color(pal[(R() * pal.length) | 0]).multiplyScalar(0.85 + R() * 0.25), n = g.attributes.position.count, arr = new Float32Array(n * 3);
       for (let i = 0; i < n; i++) { arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b; }
       g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
-      g.deleteAttribute('uv'); batch.push(g); if (batch.length >= 250) flush();
+      batch.push(g); if (batch.length >= 250) flush();
+      if (ncoll >= COLL_MAX || Math.hypot(pts[0][0], pts[0][1]) > COLL_R) continue;   // longe do centro: só visual, sem colisão
+      ncoll++;
       // colisão: retângulo orientado pela maior aresta
       let best = 0, ang = 0;
       for (let i = 0; i < pts.length; i++) { const a = pts[i], bb = pts[(i + 1) % pts.length], L = Math.hypot(bb[0] - a[0], bb[1] - a[1]); if (L > best) { best = L; ang = Math.atan2(bb[1] - a[1], bb[0] - a[0]); } }
@@ -129,6 +136,7 @@ export function buildRealWorld(D) {
     const area = (c - a) * (d - b), n = Math.min(120, Math.floor(area / 600));
     for (let k = 0; k < n * 3 && trees.length < 600; k++) { const x = a + R() * (c - a), z = b + R() * (d - b); if (inPoly(x, z, g.pts) && w.surfAt(x, z) === 3) trees.push([x, z]); }
   }
+  for (const [x, z] of D.trees || []) if (trees.length < 2500 && w.surfAt(x, z) !== 9) trees.push([x, z]);
   if (trees.length) pineSet(w, trees);
 
   // ponto de partida: via carro mais próxima do centro

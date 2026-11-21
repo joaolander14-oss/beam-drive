@@ -108,24 +108,29 @@ export async function fetchRealData(b, stat, name) {
   const lat0 = (b.s + b.n) / 2, lon0 = (b.w + b.e) / 2, mLat = 110574, mLon = 111320 * Math.cos(lat0 * Math.PI / 180);
   const P = g => [(g.lon - lon0) * mLon, (lat0 - g.lat) * mLat];
   const bb = `${b.s},${b.w},${b.n},${b.e}`;
-  const q = `[out:json][timeout:40];(way["highway"](${bb});way["building"](${bb});way["natural"~"water|wood|scrub|grassland|sand|beach"](${bb});way["waterway"~"river|stream|canal|riverbank"](${bb});way["leisure"~"park|garden|pitch|playground|golf_course"](${bb});way["landuse"~"grass|forest|meadow|recreation_ground|village_green"](${bb}););out geom tags;`;
+  const q = `[out:json][timeout:40];(way["highway"](${bb});way["building"](${bb});relation["building"](${bb});node["natural"="tree"](${bb});way["natural"~"water|wood|scrub|grassland|sand|beach"](${bb});way["waterway"~"river|stream|canal|riverbank"](${bb});way["leisure"~"park|garden|pitch|playground|golf_course"](${bb});way["landuse"~"grass|forest|meadow|recreation_ground|village_green"](${bb}););out geom tags;`;
   const j = await overpass(q, stat);
-  const D = { roads: [], buildings: [], waters: [], greens: [], name, size: { w: (b.e - b.w) * mLon, h: (b.n - b.s) * mLat } };
+  const D = { roads: [], buildings: [], waters: [], greens: [], trees: [], name, size: { w: (b.e - b.w) * mLon, h: (b.n - b.s) * mLat } };
+  const bh = (t, id) => { let h = parseFloat(t.height); if (isNaN(h)) { const lv = parseFloat(t['building:levels']); h = !isNaN(lv) ? lv * 3.2 + 1 : 6 + (id % 7); } return clamp(h, 3, 250); };
   for (const el of j.elements) {
+    if (el.type === 'node' && el.tags && el.tags.natural === 'tree') { D.trees.push(P(el)); continue; }
+    if (el.type === 'relation' && el.tags && el.tags.building && el.members) {
+      for (const m of el.members) if (m.role === 'outer' && m.geometry && m.geometry.length > 3) D.buildings.push({ pts: m.geometry.map(P), h: bh(el.tags, el.id) });
+      continue;
+    }
     if (el.type !== 'way' || !el.geometry || el.geometry.length < 2) continue;
     const t = el.tags || {}, pts = el.geometry.map(P), closed = el.geometry.length > 3 && el.nodes && el.nodes[0] === el.nodes[el.nodes.length - 1];
     if (t.highway) {
       if (DRIVEW[t.highway]) { let w = DRIVEW[t.highway]; if (t.width && !isNaN(parseFloat(t.width))) w = clamp(parseFloat(t.width), 2.2, 20); else if (t.lanes) w = clamp(+t.lanes * 3.2, 3, 20); D.roads.push({ type: t.highway, w, pts }); }
       else if (OFFW[t.highway]) D.roads.push({ type: t.highway, w: OFFW[t.highway], pts, off: true });
     } else if (t.building) {
-      let h = parseFloat(t.height); if (isNaN(h)) { const lv = parseFloat(t['building:levels']); h = !isNaN(lv) ? lv * 3.2 + 1 : 7 + (el.id % 7); }
-      if (closed || pts.length > 3) D.buildings.push({ pts, h: clamp(h, 3, 250) });
+      if (closed || pts.length > 3) D.buildings.push({ pts, h: bh(t, el.id) });
     } else if (t.waterway) {
       if (t.waterway === 'riverbank' && closed) D.waters.push({ poly: true, pts }); else D.waters.push({ w: t.waterway === 'river' ? 12 : t.waterway === 'canal' ? 8 : 3, pts });
     } else if (t.natural === 'water' && closed) D.waters.push({ poly: true, pts });
     else if (closed) D.greens.push({ pts, kind: t.natural === 'sand' || t.natural === 'beach' ? 'sand' : (t.natural === 'wood' || t.landuse === 'forest') ? 'forest' : 'grass' });
   }
-  stat(`Dados: ${D.roads.length} ruas, ${D.buildings.length} prédios. Baixando relevo…`);
+  stat(`Dados: ${D.roads.length} ruas, ${D.buildings.length} prédios, ${D.trees.length} árvores. Baixando relevo…`);
   let elev = null;
   try { elev = await loadElevation(b, stat); } catch (e) { console.warn('relevo:', e); }
   const f = elev || (() => 0);

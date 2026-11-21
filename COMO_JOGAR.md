@@ -45,7 +45,7 @@ Mouse arrasta = câmera. Gamepad suportado.
 
 ## Mundo Real (qualquer lugar do planeta)
 Menu **Mapas → Mundo Real (OpenStreetMap)**: busque um lugar, arraste um retângulo (até 2 km de lado) e clique em *Gerar mapa 3D*.
-O jogo baixa ruas, prédios (com altura), água, parques e o relevo e monta a área em 3D com física e colisões.
+O jogo baixa ruas, todos os prédios e casas (com altura e janelas; só os ~1.600 mais próximos do centro têm colisão, o resto é cenário), árvores, água, parques e o relevo e monta a área em 3D com física e colisões.
 Tudo gratuito, sem chave: mapa Leaflet/OpenStreetMap, dados via Overpass API e elevação AWS Terrain.
 Os servidores públicos às vezes ficam sobrecarregados — o jogo tenta 4 servidores em paralelo; se falhar, espere alguns minutos ou reduza a área.
 Dados © contribuidores do OpenStreetMap (ODbL).
