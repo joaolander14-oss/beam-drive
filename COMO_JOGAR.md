@@ -59,3 +59,9 @@ No Mundo Real: faixas de pedestre, semáforos com fases, placas de PARE/preferê
 ### Casas no Mundo Real (Overture Maps + genéricas)
 Onde o OpenStreetMap não tem as casas cadastradas, o jogo completa com os contornos de construções do **Overture Maps** (gratuito, detectados por satélite) e,
 nos lotes ainda vazios ao longo de ruas residenciais, com **casas genéricas** (marcadas como opção no seletor; telhados de duas águas). Casas genéricas não são as reais.
+
+### Pista e sinalização do Mundo Real (dados reais do local)
+- **Asfalto de verdade:** o terreno é nivelado ao longo e através de cada rua (pista reta e lisa), com textura de asfalto com trilhas de roda, bordas, remendos e rachaduras; calçadas com meio-fio e linhas de retenção.
+- **Sinalização conforme o OpenStreetMap:** semáforos nos cruzamentos que realmente têm (um conjunto para cada sentido de chegada, com braço sobre a pista nas vias largas e placa com o nome das ruas),
+  PARE/dê a preferência na via secundária (usa a hierarquia e a direção cadastradas), placas de velocidade (maxspeed), proibido entrar/estacionar, advertências, pontos de ônibus com abrigo, radares e lombadas (físicas) onde cadastrados.
+- Não há fonte gratuita sem chave que enxergue placas da rua (Street View/Mapillary exigem chave): onde o OpenStreetMap não tem a placa, ela não aparece.

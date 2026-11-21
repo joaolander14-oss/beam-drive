@@ -78,7 +78,7 @@ App.setTime = id => {
   App.night = T.night;
 };
 App.setWet = w => {
-  App.opt.wet = w; if (App.world) { App.world.wet = w; if (App.world.roadMat) { App.world.roadMat.roughness = 0.92 - 0.62 * w; App.world.roadMat.color.setScalar(1 - 0.38 * w); } }
+  App.opt.wet = w; if (App.world) { App.world.wet = w; for (const rm of (App.world.roadMats || [App.world.roadMat])) if (rm) { rm.roughness = 0.92 - 0.62 * w; rm.color.setScalar(1 - 0.38 * w); } }
   if (scene.fog && App.world) scene.fog.far = App.world.fogFar * (1 - 0.45 * w);
   toast(w ? 'Pista molhada: aderência reduzida' : 'Pista seca');
 };
