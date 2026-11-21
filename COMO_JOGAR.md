@@ -13,7 +13,7 @@ Inspirados em carros reais — de Fiat Uno e Fusca a Ferrari F40, Porsche 911 GT
 Cada um tem ficha técnica própria (massa, motor com curva de torque, câmbio, tração, pneus, suspensão). Há busca e filtro por classe no menu Carros.
 (Nomes de marcas são usados apenas para identificar o modelo que inspirou o carro; o projeto não tem relação com as fabricantes.)
 
-## Mapas (4)
+## Mapas (4 + Mundo Real)
 Campo de Provas (arrancada 400 m, skidpad, slalom, rampas, muros, off-road) ·
 Serra do Rio (estrada de montanha de ~4 km) · Deserto & Rochas · Autódromo (com cronômetro de volta)
 
@@ -42,3 +42,10 @@ W/↑ acelera · S/↓ freia/ré · A/D direção · Espaço freio de mão · N 
 T auto/manual · C câmera · V olhar para trás · R desvira · Backspace volta ao início e conserta ·
 Delete conserta · L faróis · F telemetria · P pausa · [ ] câmera lenta · G garagem · M mapas · Esc menu ·
 Mouse arrasta = câmera. Gamepad suportado.
+
+## Mundo Real (qualquer lugar do planeta)
+Menu **Mapas → Mundo Real (OpenStreetMap)**: busque um lugar, arraste um retângulo (até 2 km de lado) e clique em *Gerar mapa 3D*.
+O jogo baixa ruas, prédios (com altura), água, parques e o relevo e monta a área em 3D com física e colisões.
+Tudo gratuito, sem chave: mapa Leaflet/OpenStreetMap, dados via Overpass API e elevação AWS Terrain.
+Os servidores públicos às vezes ficam sobrecarregados — o jogo tenta 4 servidores em paralelo; se falhar, espere alguns minutos ou reduza a área.
+Dados © contribuidores do OpenStreetMap (ODbL).

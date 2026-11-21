@@ -195,6 +195,7 @@ export const SURF = [
   { id: 6, name: 'Lama',     mu: 0.40, crr: 0.120, hard: false, col: [0.27, 0.19, 0.12] },
   { id: 7, name: 'Rocha',    mu: 0.88, crr: 0.015, hard: true,  col: [0.45, 0.42, 0.40] },
   { id: 8, name: 'Zebra',    mu: 0.92, crr: 0.000, hard: true,  col: [0.75, 0.2, 0.2] },
+  { id: 9, name: 'Água rasa', mu: 0.30, crr: 0.200, hard: false, col: [0.12, 0.30, 0.45] },
 ];
 
 // ------------------------------------------------------------
@@ -310,6 +311,7 @@ export const MAPS = {
   campo:  { name: 'Campo de Provas', desc: 'Pista plana, arrancada de 400 m, skidpad, slalom, rampas, muros de colisão e trecho off-road' },
   serra:  { name: 'Serra do Rio', desc: 'Estrada de montanha sinuosa de ~5 km com curvas fechadas, guard-rails e desfiladeiros' },
   deserto:{ name: 'Deserto & Rochas', desc: 'Dunas de areia, estradas de terra, leito de rio seco, lama e área de rock-crawling' },
+  real:   { name: 'Mundo Real (OpenStreetMap)', desc: 'Desenhe uma área em qualquer lugar do mundo e dirija nela: ruas, prédios, água, parques e relevo reais (dados gratuitos do OpenStreetMap)' },
   autodromo: { name: 'Autódromo', desc: 'Circuito de corrida com zebras, áreas de escape de brita e cronômetro de volta' },
 };
 

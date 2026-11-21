@@ -9,6 +9,7 @@ import { defaultCfg, buildSpec } from './spec.js';
 import { Vehicle } from './physics.js';
 import { CarModel } from './carmodel.js';
 import { buildWorld } from './maps.js';
+import { buildRealWorld } from './realworld.js';
 import { CarAudio } from './audio.js';
 import { Particles, SkidMarks } from './fx.js';
 import { UI } from './ui.js';
@@ -99,7 +100,8 @@ App.loadMap = async function (id) {
   const ld = $('#loading'); ld.classList.remove('hidden'); loading('Gerando mapa: ' + MAPS[id].name + '…', 20); await nextFrame();
   if (App.world) { scene.remove(App.world.group); App.world.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
   const t0 = performance.now();
-  const w = buildWorld(id);
+  if (id === 'real' && !App.realData) { ld.classList.add('hidden'); App.openRealPicker(); return; }
+  const w = id === 'real' ? buildRealWorld(App.realData) : buildWorld(id);
   App.world = w; App.mapId = id; w.wet = App.opt.wet;
   scene.add(w.group);
   if (skid) { scene.remove(skid.mesh); }
@@ -117,6 +119,8 @@ App.loadMap = async function (id) {
   App.meas = { t100: null, brake: null, top: 0, latG: 0, run: null, dist: 0 };
 };
 
+App.openRealPicker = function () { import('./realmap.js').then(m => m.openRealPicker(App)); };
+App.loadRealMap = async function (D) { App.realData = D; await App.loadMap('real'); if (App.menuOpen) App.closeMenu(); toast(D.hasElev ? 'Mundo Real gerado com relevo' : 'Mundo Real gerado (sem relevo: servidor de elevação indisponível)', 3000); };
 App.respawn = function (full) {
   const w = App.world, s = w.spawn, v = App.veh;
   const h = w.heightAt(s.x, s.z);

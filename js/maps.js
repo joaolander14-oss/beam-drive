@@ -7,7 +7,7 @@ import { World, Paint, Road, splineSample, makeTex, fbm, vnoise, rnd } from './w
 
 const TAU = Math.PI * 2;
 
-function terrainColor(x, z, h, s, ny, out) {
+export function terrainColor(x, z, h, s, ny, out) {
   const c = SURF[s].col, n = (fbm(x * 0.045, z * 0.045, 3) - 0.5) * 0.30, n2 = (vnoise(x * 0.6, z * 0.6) - 0.5) * 0.10;
   const k = 1 + n + n2;
   out[0] = c[0] * k; out[1] = c[1] * k; out[2] = c[2] * k;
@@ -24,7 +24,7 @@ function instanced(world, geo, mat, mats, colors, shadow = true) {
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _p = new THREE.Vector3(), _e = new THREE.Euler();
 function mat4(x, y, z, sx, sy, sz, ry = 0, rx = 0, rz = 0) { _e.set(rx, ry, rz); _q.setFromEuler(_e); return new THREE.Matrix4().compose(_p.set(x, y, z), _q, _s.set(sx, sy, sz)); }
 
-function pineSet(w, pts) {
+export function pineSet(w, pts) {
   const trunk = new THREE.CylinderGeometry(0.22, 0.34, 3.2, 6); trunk.translate(0, 1.6, 0);
   const c1 = new THREE.ConeGeometry(2.4, 5.5, 7); c1.translate(0, 5.0, 0);
   const c2 = new THREE.ConeGeometry(1.8, 4.5, 7); c2.translate(0, 7.8, 0);

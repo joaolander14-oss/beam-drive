@@ -166,7 +166,7 @@ export class UI {
     const g = el('div', 'cards');
     for (const [id, m] of Object.entries(MAPS)) {
       const d = el('div', 'card' + (this.app.mapId === id ? ' sel' : ''), `<h3>${m.name}</h3><div class="sub">${m.desc}</div>`);
-      d.onclick = () => { this.app.loadMap(id).then(() => this.renderMaps()); };
+      d.onclick = () => { if (id === 'real') { this.app.openRealPicker(); return; } this.app.loadMap(id).then(() => this.renderMaps()); };
       g.append(d);
     }
     p.append(g);

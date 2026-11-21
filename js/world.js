@@ -286,11 +286,11 @@ export class World {
     return out;
   }
   clampBounds(v) {
-    const B = this.bound, p = v.pos;
-    if (p.x > B) { p.x = B; if (v.vel.x > 0) v.vel.x *= -0.2; }
-    if (p.x < -B) { p.x = -B; if (v.vel.x < 0) v.vel.x *= -0.2; }
-    if (p.z > B) { p.z = B; if (v.vel.z > 0) v.vel.z *= -0.2; }
-    if (p.z < -B) { p.z = -B; if (v.vel.z < 0) v.vel.z *= -0.2; }
+    const B = this.bound, p = v.pos, BX = this.bx ?? B, BZ = this.bz ?? B;
+    if (p.x > BX) { p.x = BX; if (v.vel.x > 0) v.vel.x *= -0.2; }
+    if (p.x < -BX) { p.x = -BX; if (v.vel.x < 0) v.vel.x *= -0.2; }
+    if (p.z > BZ) { p.z = BZ; if (v.vel.z > 0) v.vel.z *= -0.2; }
+    if (p.z < -BZ) { p.z = -BZ; if (v.vel.z < 0) v.vel.z *= -0.2; }
   }
 
   // ---------- rampas ----------
