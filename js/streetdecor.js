@@ -328,22 +328,46 @@ export function addStreetDetails(w, D, roads, bmask) {
     w.signKinds = groups.size;
   }
 
-  // ---- lombadas reais (traffic_calming) — físicas e pintadas ----
-  { let nh = 0;
-    for (const n of nodes) {
-      if (n.k !== 'calming' || nh > 60) continue;
-      const kind = n.tags.traffic_calming; if (!['bump', 'hump', 'table', 'cushion'].includes(kind)) continue;
-      const apps = approaches(n); const a = apps[0]; if (!a) continue;
-      const hh = kind === 'table' ? 0.1 : kind === 'bump' ? 0.08 : kind === 'cushion' ? 0.07 : 0.1, len = kind === 'table' ? 6 : kind === 'bump' ? 2.4 : 3.6, hw = a.w / 2;
-      const cx = n.x, cz = n.z, tx = a.tx, tz = a.tz, nx = -tz, nz = tx, ext = len + hw + 2;
-      const fn = (x, z) => { const t = (x - cx) * tx + (z - cz) * tz, s = (x - cx) * nx + (z - cz) * nz; if (Math.abs(s) > hw + 0.3 || Math.abs(t) > len / 2) return 0; const u = Math.abs(t) / (len / 2); return kind === 'table' ? hh * Math.min(1, (1 - u) * 4) : hh * Math.cos(u * Math.PI / 2) ** 1.3; };
-      w.feat.push({ x0: cx - ext, x1: cx + ext, z0: cz - ext, z1: cz + ext, fn: (px, pz, h) => h + fn(px, pz) });
-      const pos = [], col = [], idx = [], NT = 12, NS2 = 6, yl = new THREE.Color(0.95, 0.78, 0.05), bk = new THREE.Color(0.06, 0.06, 0.07);
-      for (let i = 0; i <= NT; i++) for (let j = 0; j <= NS2; j++) { const t = (i / NT - 0.5) * len, s = (j / NS2 - 0.5) * (hw * 2 - 0.2), x = cx + tx * t + nx * s, z = cz + tz * t + nz * s; pos.push(x, H(x, z) + 0.035, z); const c = (i % 2) ? yl : bk; col.push(c.r, c.g, c.b); }
-      for (let i = 0; i < NT; i++) for (let j = 0; j < NS2; j++) { const q = i * (NS2 + 1) + j; idx.push(q, q + NS2 + 1, q + 1, q + 1, q + NS2 + 1, q + NS2 + 2); }
-      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals();
-      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 })); m.receiveShadow = true; w.group.add(m); nh++;
-    } }
+  // ---- lombadas (reais do OSM + genéricas): o perfil depende da velocidade permitida na via ----
+  //  velocidade baixa => lombada curta e alta (arco estreito, bem dura); velocidade alta => arco longo e suave (mesa de velocidade)
+  const bumpSpec = (kmh, kind) => {
+    const v = kmh <= 25 ? 20 : kmh <= 35 ? 30 : kmh <= 45 ? 40 : kmh <= 55 ? 50 : kmh <= 65 ? 60 : 70;
+    const P = { 20: { h: 0.12, L: 1.3, tab: 0 }, 30: { h: 0.10, L: 2.2, tab: 0 }, 40: { h: 0.09, L: 3.4, tab: 0 }, 50: { h: 0.085, L: 4.8, tab: 0 }, 60: { h: 0.09, L: 8, tab: 3 }, 70: { h: 0.08, L: 12, tab: 4.5 } }[v];
+    if (kind === 'table' && !P.tab) return { h: Math.min(P.h, 0.10), L: Math.max(P.L, 6), tab: 1.6, v };
+    return { ...P, v };
+  };
+  let nBump = 0;
+  const addBump = (cx, cz, tx, tz, wRoad, kmh, kind) => {
+    if (nBump >= 160) return; nBump++;
+    const { h: hh, L: len, tab } = bumpSpec(kmh, kind), hw = wRoad / 2, nx = -tz, nz = tx, ext = len / 2 + hw + 3, half = kind === 'cushion' ? Math.min(hw, 0.95) : hw + 0.3;
+    const prof = t => { const at = Math.abs(t); if (at > len / 2) return 0; if (tab) return hh * Math.min(1, (len / 2 - at) / tab); const u = at / (len / 2); return hh * Math.cos(u * Math.PI / 2) ** 1.25; };
+    const fn = (x, z) => { const t = (x - cx) * tx + (z - cz) * tz, s = (x - cx) * nx + (z - cz) * nz; if (Math.abs(s) > half || Math.abs(t) > len / 2) return 0; const edge = Math.min(1, (half - Math.abs(s)) / 0.25); return prof(t) * edge; };
+    w.feat.push({ x0: cx - ext, x1: cx + ext, z0: cz - ext, z1: cz + ext, fn: (px, pz, h) => h + fn(px, pz) });
+    // pintura: faixas amarelas/pretas (mais faixas nas lombadas longas); mesas ganham triângulos de aviso nas rampas
+    const pos = [], col = [], idx = [], NT = Math.max(6, Math.round(len / 0.45) | 0), NS2 = 6, yl = new THREE.Color(0.95, 0.78, 0.05), bk = new THREE.Color(0.06, 0.06, 0.07), wh = new THREE.Color(0.93, 0.93, 0.93);
+    for (let i = 0; i <= NT; i++) for (let j = 0; j <= NS2; j++) { const t = (i / NT - 0.5) * len, s = (j / NS2 - 0.5) * (half * 2 - 0.2), x = cx + tx * t + nx * s, z = cz + tz * t + nz * s; pos.push(x, H(x, z) + 0.035, z); const onFlat = tab && Math.abs(t) < len / 2 - tab; const c = onFlat ? (j % 2 ? wh : bk) : ((i % 2) ? yl : bk); col.push(c.r, c.g, c.b); }
+    for (let i = 0; i < NT; i++) for (let j = 0; j < NS2; j++) { const q = i * (NS2 + 1) + j; idx.push(q, q + NS2 + 1, q + 1, q + 1, q + NS2 + 1, q + NS2 + 2); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 })); m.receiveShadow = true; w.group.add(m);
+  };
+  const roadKmh = r => r.ms || LIMIT[r.type] || 40;
+  for (const n of nodes) {
+    if (n.k !== 'calming') continue;
+    const kind = n.tags.traffic_calming; if (!['bump', 'hump', 'table', 'cushion'].includes(kind)) continue;
+    const a = approaches(n)[0]; if (!a) continue;
+    addBump(n.x, n.z, a.tx, a.tz, a.w, roadKmh(a.r), kind);
+  }
+  if (D.opts && D.opts.genericSigns) {
+    const rb = rnd(53), near = (x, z, R2) => nodes.some(n => (n.x - x) ** 2 + (n.z - z) ** 2 < R2);
+    for (const r of drive) {
+      const k = roadKmh(r); if (r.w < 3.2 || k > 50 || (RANK[r.type] || 0) > 4) continue;     // só ruas locais
+      along(r.pts, k <= 30 ? 150 : 260, (x, z, tx, tz) => { if (rb() < 0.55 && !near(x, z, 20 * 20)) addBump(x, z, tx, tz, r.w, k, 'bump'); });
+    }
+    // vias coletoras/arteriais de 50-70 km/h: mesas longas e suaves nos cruzamentos de pedestre
+    for (const r of drive) { const k = roadKmh(r); if (k < 50 || k > 70 || r.w < 3.5) continue; along(r.pts, 420, (x, z, tx, tz) => { if (rb() < 0.3 && !near(x, z, 25 * 25)) addBump(x, z, tx, tz, r.w, k, 'table'); }); }
+  }
+
+  w.bumpCount = nBump;
 
   // ---- árvores de calçada ----
   { const trunk = new THREE.CylinderGeometry(0.12, 0.18, 2.6, 6); trunk.translate(0, 1.3, 0);
