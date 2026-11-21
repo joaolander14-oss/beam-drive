@@ -142,6 +142,8 @@ export function buildRealWorld(D) {
   addRoad(strips(wide, 'asphalt'), new THREE.MeshStandardMaterial({ map: makeRoadTex(4), roughness: 0.9 }));
   const trk = roads.filter(r => r.off && r.type === 'track'), wlk = roads.filter(r => r.off && r.type !== 'track' || r.type === 'pedestrian');
   { const t = makeTex('asphalt', 256).clone(); t.needsUpdate = true; addRoad(strips(trk, 'world'), new THREE.MeshStandardMaterial({ map: t, color: 0xb08a5c, roughness: 1 })); addRoad(strips(wlk, 'world'), new THREE.MeshStandardMaterial({ map: t, color: 0xc4c4bc, roughness: 0.95 })); }
+  const underB = (x, z) => { const k = cell(x, z); return k >= 0 && bmask[k] === 1; };
+  w.navRoads = roads.filter(r => !r.off && r.w >= 3 && r.pts.length > 1 && r.ids && r.type !== 'pedestrian' && !r.pts.some((p, i) => underB(p[0], p[1]) || (i > 0 && underB((p[0] + r.pts[i - 1][0]) / 2, (p[1] + r.pts[i - 1][1]) / 2))));
   addStreetDetails(w, D, roads, bmask);
 
   // prédios (malha única por lotes + colisões em caixas orientadas)
@@ -207,7 +209,12 @@ export function buildRealWorld(D) {
       if ((u1 - u0) * (v1 - v0) < 420 && H <= 8 && (u1 - u0) > 3 && (v1 - v0) > 3) batch.push(roofGeo(cu, cv, ca, sa, (u1 - u0) / 2, (v1 - v0) / 2, lo - 0.5 + depth, R));
       if (ncoll >= COLL_MAX || Math.hypot(pts[0][0], pts[0][1]) > COLL_R) continue;   // longe do centro: só visual, sem colisão
       ncoll++;
-      w.addBoxCol(cu * ca - cv * sa, lo + depth / 2 - 0.5, cu * sa + cv * ca, (u1 - u0) / 2, depth / 2, (v1 - v0) / 2, ang);
+      let pa = 0; for (let i = 0; i < pts.length; i++) { const a2 = pts[i], b2 = pts[(i + 1) % pts.length]; pa += a2[0] * b2[1] - b2[0] * a2[1]; } pa = Math.abs(pa) / 2;
+      if (pa / ((u1 - u0) * (v1 - v0) + 1e-6) > 0.8) w.addBoxCol(cu * ca - cv * sa, lo + depth / 2 - 0.5, cu * sa + cv * ca, (u1 - u0) / 2, depth / 2, (v1 - v0) / 2, ang);
+      else for (let i = 0; i < pts.length; i++) {   // prédio em L/U/curvo: paredes exatas (não bloqueia a rua ao lado)
+        const a2 = pts[i], b2 = pts[(i + 1) % pts.length], L = Math.hypot(b2[0] - a2[0], b2[1] - a2[1]); if (L < 0.6) continue;
+        w.addBoxCol((a2[0] + b2[0]) / 2, lo + depth / 2 - 0.5, (a2[1] + b2[1]) / 2, L / 2 + 0.1, depth / 2, 0.4, Math.atan2(b2[1] - a2[1], b2[0] - a2[0]));
+      }
     } catch (e) { /* polígono inválido */ }
   }
   flush();

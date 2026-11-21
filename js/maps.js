@@ -214,6 +214,14 @@ export function buildCampo(w) {
   const trees = []; for (let i = 0; i < 260; i++) { const x = (R() - 0.5) * 860, z = (R() - 0.5) * 860; if ((Math.abs(x) < 310 && Math.abs(z) < 220) || w.surfAt(x, z) !== 3) continue; trees.push([x, z]); }
   pineSet(w, trees);
   signMesh(w, 'OFF-ROAD', 0, 238, Math.PI, 6, 1.4, 3, 'lama · colina · pedras · costelas');
+  { // circuito de tráfego (anel retangular com cantos arredondados) para os bots
+    const x0 = -280, x1 = -10, z0 = -135, z1 = 70, rad = 40, pts = [];
+    const line = (a, b) => { const L = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.round(L / 15)); for (let k = 0; k < n; k++) pts.push([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]); };
+    const arc = (cx, cz, a0, a1) => { for (let k = 0; k < 8; k++) { const a = a0 + (a1 - a0) * k / 8; pts.push([cx + Math.cos(a) * rad, cz + Math.sin(a) * rad]); } };
+    line([x0 + rad, z0], [x1 - rad, z0]); arc(x1 - rad, z0 + rad, -Math.PI / 2, 0); line([x1, z0 + rad], [x1, z1 - rad]); arc(x1 - rad, z1 - rad, 0, Math.PI / 2);
+    line([x1 - rad, z1], [x0 + rad, z1]); arc(x0 + rad, z1 - rad, Math.PI / 2, Math.PI); line([x0, z1 - rad], [x0, z0 + rad]); arc(x0 + rad, z0 + rad, Math.PI, Math.PI * 1.5);
+    w.navLoop = pts;
+  }
   w.spawn = { x: -40, z: 30, yaw: 0 };
   w.fogFar = 1800; w.name = 'Campo de Provas';
 }

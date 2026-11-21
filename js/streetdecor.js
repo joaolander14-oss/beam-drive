@@ -8,6 +8,7 @@ import { Paint, rnd } from './world.js';
 const TREE_ROADS = new Set(['residential', 'tertiary', 'unclassified', 'living_street', 'secondary']);
 const LAMP_ROADS = new Set(['primary', 'secondary', 'tertiary', 'residential', 'unclassified', 'trunk', 'living_street']);
 const SIDEWALK = new Set(['primary', 'secondary', 'tertiary', 'residential', 'unclassified', 'living_street', 'trunk']);
+export const LIMIT = { motorway: 80, trunk: 80, primary: 70, secondary: 60, tertiary: 50, unclassified: 40, residential: 30, living_street: 20, service: 20 };
 const RANK = { motorway: 9, trunk: 8, primary: 7, secondary: 6, tertiary: 5, unclassified: 4, residential: 3, living_street: 2, service: 1 };
 
 export function offsetPts(p, off) {
@@ -90,7 +91,10 @@ function inst(w, geo, material, mats, colors) {
 export function addStreetDetails(w, D, roads, bmask) {
   const drive = roads.filter(r => !r.off && r.pts.length > 1);
   const R = rnd(17), P = new Paint(w), H = (x, z) => w.heightAt(x, z);
-  const nodes = D.nodes || [];
+  const nodes = (D.nodes || []).slice();
+  w.traffic = { rules: [], grid: new Map(), cell: 30, sig: (g, t) => { const k = (t + (g ? 0 : 10)) % 20; return k < 10 ? 2 : k < 12 ? 1 : 0; } };
+  const addRule = (rec) => { rec.id = w.traffic.rules.length; w.traffic.rules.push(rec); const key = Math.floor(rec.x / 30) * 20011 + Math.floor(rec.z / 30); (w.traffic.grid.get(key) || w.traffic.grid.set(key, []).get(key)).push(rec); };
+  const ruleAt = (a, type, grp) => addRule({ type, grp, x: a.x - a.tx * (a.w / 2 + 3.2), z: a.z - a.tz * (a.w / 2 + 3.2), tx: a.tx, tz: a.tz, w: a.w });
 
   // ---- marcações longitudinais ----
   for (const r of drive) {
@@ -114,8 +118,8 @@ export function addStreetDetails(w, D, roads, bmask) {
     const out = [], list = nodeWay.get(n.id);
     if (list) for (const { r, i } of list) {
       const p = r.pts;
-      if (i > 0) { const a = p[i - 1], b = p[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; out.push({ x: b[0], z: b[1], tx: (b[0] - a[0]) / L, tz: (b[1] - a[1]) / L, w: r.w, r, fwd: true }); }
-      if (i < p.length - 1 && !r.oneway) { const a = p[i + 1], b = p[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; out.push({ x: b[0], z: b[1], tx: (b[0] - a[0]) / L, tz: (b[1] - a[1]) / L, w: r.w, r, fwd: false }); }
+      if (i > 0) { const a = p[i - 1], b = p[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; out.push({ x: b[0], z: b[1], tx: (b[0] - a[0]) / L, tz: (b[1] - a[1]) / L, w: r.w, r, i, fwd: true }); }
+      if (i < p.length - 1 && !r.oneway) { const a = p[i + 1], b = p[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; out.push({ x: b[0], z: b[1], tx: (b[0] - a[0]) / L, tz: (b[1] - a[1]) / L, w: r.w, r, i, fwd: false }); }
     }
     if (!out.length) { const c = nearest(n.x, n.z, 16); if (c) { out.push({ x: c.x, z: c.z, tx: c.tx, tz: c.tz, w: c.w, r: c.r, fwd: true }, { x: c.x, z: c.z, tx: -c.tx, tz: -c.tz, w: c.w, r: c.r, fwd: false }); } }
     const dir = n.tags && (n.tags.direction || n.tags['traffic_signals:direction']);
@@ -123,6 +127,20 @@ export function addStreetDetails(w, D, roads, bmask) {
     if (dir === 'backward') return out.filter(a => !a.fwd);
     return out;
   };
+  // ---- sinalização genérica nos cruzamentos sem dados (opção): semáforo entre vias principais, PARE/preferência nas demais ----
+  if (D.opts && D.opts.genericSigns) {
+    const real = nodes.filter(n => n.k === 'traffic_signals' || n.k === 'stop' || n.k === 'give_way' || (n.tags && /stop|yield|give/i.test(n.tags.traffic_sign || '')));
+    const gen = [];
+    for (const [id, list] of nodeWay) {
+      const p0 = list[0].r.pts[list[0].i], legs = list.reduce((s, e) => s + (e.i > 0 ? 1 : 0) + (e.i < e.r.pts.length - 1 ? 1 : 0), 0);
+      if (legs < 3 || real.some(n => Math.hypot(n.x - p0[0], n.z - p0[1]) < 22) || gen.some(g => Math.hypot(g.x - p0[0], g.z - p0[1]) < 22)) continue;
+      const ranks = list.map(e => RANK[e.r.type] || 0), mx = Math.max(...ranks), major = list.filter(e => (RANK[e.r.type] || 0) >= 6).length;
+      const lower = ranks.some(r => r < mx), stems = list.some(e => e.i === 0 || e.i === e.r.pts.length - 1);
+      const k = (mx >= 6 && major >= 2 && legs >= 4) ? 'traffic_signals' : (lower || stems) ? 'stop' : 'give_way';
+      gen.push({ id, k, x: p0[0], z: p0[1], tags: {}, generic: true });
+    }
+    for (const g of gen) nodes.push(g);
+  }
   const stopLine = (a) => { // linha de retenção na pista da direita antes do cruzamento
     const nx = -a.tz, nz = a.tx, hw = a.w / 2, bx = a.x - a.tx * (hw + 3.2), bz = a.z - a.tz * (hw + 3.2), half = a.r.oneway ? hw : hw * 0.5;
     P.quad('#f4f4f4', [[bx + nx * 0.1, bz + nz * 0.1], [bx + nx * half * 0.96, bz + nz * half * 0.96], [bx + nx * half * 0.96 + a.tx * 0.45, bz + nz * half * 0.96 + a.tz * 0.45], [bx + a.tx * 0.45 + nx * 0.1, bz + a.tz * 0.45 + nz * 0.1]], 0.075);
@@ -185,6 +203,7 @@ export function addStreetDetails(w, D, roads, bmask) {
         const face = Math.atan2(-a.tx, -a.tz);
         const ang = Math.abs(Math.atan2(a.tz, a.tx)) % Math.PI, grp = ang < Math.PI / 4 || ang > 3 * Math.PI / 4;
         const addHead = (x, y, z) => { const m = mat(x, y, z, face); heads.push(m); (grp ? A : Bm).push(m); };
+        ruleAt(a, 'signal', grp);
         poles.push(mat(px, py, pz));
         addHead(px - rx * 0.05, py + 3.3, pz - rz * 0.05);
         if (mast) { const L = hw * 0.85, ry = -Math.atan2(-rz, -rx); arms.push(mat(px, py + 5.6, pz, ry, L, 1, 1)); addHead(px - rx * L, py + 5.1, pz - rz * L); addHead(px - rx * L * 0.45, py + 5.1, pz - rz * L * 0.45); }
@@ -213,9 +232,11 @@ export function addStreetDetails(w, D, roads, bmask) {
     for (const n of nodes) {
       const t = n.tags || {}, ts = String(t.traffic_sign || '');
       const apps = approaches(n), rank = Math.max(0, ...apps.map(a => RANK[a.r.type] || 0));
-      const pick = t.direction ? apps : apps.filter(a => apps.length < 2 || (RANK[a.r.type] || 0) < rank || apps.every(q => (RANK[q.r.type] || 0) === rank));
-      if (n.k === 'stop' || /stop|R-1\b/i.test(ts)) for (const a of pick) { place(a, 'stop'); stopLine(a); }
-      else if (n.k === 'give_way' || /give_way|yield|R-2\b/i.test(ts)) for (const a of pick) { place(a, 'yield'); stopLine(a); }
+      const stem = a => (a.fwd ? a.i === a.r.pts.length - 1 : a.i === 0);
+      const allEq = apps.every(q => (RANK[q.r.type] || 0) === rank);
+      const pick = t.direction || apps.length < 2 ? apps : allEq ? (apps.some(stem) && !apps.every(stem) ? apps.filter(stem) : apps) : apps.filter(a => (RANK[a.r.type] || 0) < rank);
+      if (n.k === 'stop' || /stop|R-1\b/i.test(ts)) for (const a of pick) { place(a, 'stop'); stopLine(a); ruleAt(a, 'stop'); }
+      else if (n.k === 'give_way' || /give_way|yield|R-2\b/i.test(ts)) for (const a of pick) { place(a, 'yield'); stopLine(a); ruleAt(a, 'yield'); }
       else if (/maxspeed|R-19/i.test(ts) || (t.maxspeed && n.k === 'sign')) { const v = speedOf(t); if (v) for (const a of apps.slice(0, 2)) place(a, 'speed', String(v)); }
       else if (/no_entry|R-3\b/i.test(ts)) { if (apps[0]) place(apps[0], 'noentry'); }
       else if (/no_parking|no_stopping|R-6/i.test(ts)) { if (apps[0]) place(apps[0], 'nopark'); }
@@ -231,8 +252,9 @@ export function addStreetDetails(w, D, roads, bmask) {
         const a = apps[0]; if (a) place(a, 'warn', /school|children/i.test(ts) ? '🏫' : /crossing|pedestrian/i.test(ts) ? '🚶' : '!');
       }
     }
-    // limites de velocidade das vias (início e a cada ~300 m)
-    for (const r of drive) if (r.ms && r.ms >= 20 && r.ms <= 120) { let dist = 0, nextAt = 0; for (let i = 0; i < r.pts.length - 1; i++) { const [ax, az] = r.pts[i], [bx, bz] = r.pts[i + 1], L = Math.hypot(bx - ax, bz - az) || 1; if (dist >= nextAt) { place({ x: ax, z: az, tx: (bx - ax) / L, tz: (bz - az) / L, w: r.w }, 'speed', String(r.ms), -3, 0.9); nextAt = dist + 300; } dist += L; } }
+    // limites de velocidade das vias (início e a cada ~300 m); sinalização genérica usa o limite padrão do tipo de via
+    for (const r of drive) { const ms = r.ms || ((D.opts && D.opts.genericSigns && r.w >= 3.5) ? LIMIT[r.type] : 0); if (!(ms >= 20 && ms <= 120)) continue;
+      let dist = 0, nextAt = 0; for (let i = 0; i < r.pts.length - 1; i++) { const [ax, az] = r.pts[i], [bx, bz] = r.pts[i + 1], L = Math.hypot(bx - ax, bz - az) || 1; if (dist >= nextAt) { place({ x: ax, z: az, tx: (bx - ax) / L, tz: (bz - az) / L, w: r.w }, 'speed', String(ms), -3, 0.9); nextAt = dist + 300; } dist += L; } }
   }
 
   // ---- lombadas reais (traffic_calming) — físicas e pintadas ----

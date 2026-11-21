@@ -66,6 +66,7 @@ export class Vehicle {
     this.dmg = { engine: 0, rad: 0, body: 0, wheel: [0, 0, 0, 0] };
     this.localV = V(); this.accL = V(); this.prevVel = V();
     this.stats = { t: 0 };
+    this.noReverse = false; this.airbag = false; this.brakeHeat = 0;
   }
 
   setSpec(spec) {
@@ -95,7 +96,7 @@ export class Vehicle {
   }
 
   refuel() { this.fuel = this.tank; }
-  dmgReset() { this.dmg = { engine: 0, rad: 0, body: 0, wheel: [0, 0, 0, 0] }; this.temp = 60; }
+  dmgReset() { this.dmg = { engine: 0, rad: 0, body: 0, wheel: [0, 0, 0, 0] }; this.temp = 60; this.airbag = false; this.brakeHeat = 0; }
 
   reset(x, y, z, yaw) {
     const s = this.spec;
@@ -172,7 +173,7 @@ export class Vehicle {
         else if (inp.thr > 0.05 && Math.abs(fs) <= 0.8) { this.requestGear(1); thr = 0; }
         else { thr = clamp(inp.brk, 0, 1); brk = 0; if (inp.brk > 0.05 && fs > 0.5) { brk = inp.brk; thr = 0; } }
       } else {
-        if (inp.brk > 0.05 && inp.thr < 0.05 && Math.abs(fs) < 0.9 && this.speedLow()) { this.requestGear(-1); thr = 0; brk = 0; }
+        if (!this.noReverse && inp.brk > 0.05 && inp.thr < 0.05 && Math.abs(fs) < 0.9 && this.speedLow()) { this.requestGear(-1); thr = 0; brk = 0; }
       }
     } else if (this.gear === -1) {
       // manual: pedal freio fica freio
@@ -923,6 +924,7 @@ export class Vehicle {
     const lp = V().copy(p).sub(this.pos).applyQuaternion(q);
     const ln = V().copy(n).applyQuaternion(q);
     this.impacts.push({ p: lp, n: ln, v });
+    if (v > 12) this.airbag = true;
     this.events.push({ type: 'hit', v, p: p.clone() });
     // dano mecânico
     const s = this.spec;
@@ -973,6 +975,7 @@ export class Vehicle {
 
   // ---------- temperatura ----------
   thermal(dt) {
+    { const spd = Math.abs(this.fwdSpeed); this.brakeHeat += this.pedalBrk * spd * dt * 0.012; this.brakeHeat -= this.brakeHeat * dt * 0.05 * (1 + spd / 15); this.brakeHeat = clamp(this.brakeHeat, 0, 1.3); }
     const E = this.E;
     const P = Math.max(0, this.Te * this.we / 1000) * (E.kind === 'ev' ? 0.12 : 0.62) + (E.kind === 'ev' ? 0.2 : 1.2) * (this.we / Math.max(E.red * Math.PI / 30, 1));
     const air = Math.abs(this.fwdSpeed);
@@ -1039,4 +1042,53 @@ export function quickPerf(spec) {
     out.top = v;
   }
   return out;
+}
+
+
+// ---------------------------------------------------------------
+//  Colisão veículo x veículo (corpo rígido dos dois lados)
+// ---------------------------------------------------------------
+const _l = V(), _n = V(), _rA = V(), _rB = V(), _vr = V(), _c1 = V(), _c2 = V(), _c3 = V(), _c4 = V(), _iA = V(), _iB = V(), _j = V();
+function pointInBoxes(Q, p, out) {
+  _l.copy(p).sub(Q.pos).applyQuaternion(Q._qi(Q.quat));
+  for (const b of [Q.spec.boxLow, Q.spec.boxCab]) {
+    const dx = _l.x - b.c.x, dy = _l.y - b.c.y, dz = _l.z - b.c.z;
+    const px = b.h.x - Math.abs(dx), py = b.h.y - Math.abs(dy), pz = b.h.z - Math.abs(dz);
+    if (px > 0 && py > 0 && pz > 0) {
+      if (px <= py && px <= pz) out.set(Math.sign(dx) || 1, 0, 0); else if (pz <= py) out.set(0, 0, Math.sign(dz) || 1); else out.set(0, Math.sign(dy) || 1, 0);
+      out.applyQuaternion(Q.quat);
+      return Math.min(px, py, pz);
+    }
+  }
+  return 0;
+}
+function twoBody(A, B, p, n, pen) {   // n aponta de B para A
+  const mA = A.spec.mass, mB = B.spec.mass;
+  _rA.copy(p).sub(A.pos); _rB.copy(p).sub(B.pos);
+  _vr.copy(A.w).cross(_rA).add(A.vel).sub(_c1.copy(B.w).cross(_rB).add(B.vel));
+  const vn = _vr.dot(n);
+  if (vn < 0) {
+    A.invIworld(_c2.copy(_rA).cross(n), _iA); B.invIworld(_c3.copy(_rB).cross(n), _iB);
+    const kN = 1 / mA + 1 / mB + _c4.copy(_iA).cross(_rA).dot(n) + _c4.copy(_iB).cross(_rB).dot(n);
+    const j = Math.min(-(1.12) * vn / kN, Math.min(mA, mB) * 40);
+    _j.copy(n).multiplyScalar(j);
+    A.vel.addScaledVector(_j, 1 / mA); B.vel.addScaledVector(_j, -1 / mB);
+    A.w.add(A.invIworld(_c2.copy(_rA).cross(_j), _iA)); B.w.sub(B.invIworld(_c3.copy(_rB).cross(_j), _iB));
+    // atrito tangencial leve
+    const vt = _c1.copy(_vr).addScaledVector(n, -vn), vtl = vt.length();
+    if (vtl > 1e-3) { vt.divideScalar(vtl); const jt = Math.min(vtl / (1 / mA + 1 / mB), 0.35 * j); A.vel.addScaledVector(vt, -jt / mA); B.vel.addScaledVector(vt, jt / mB); }
+    if (-vn > 1.2) { A.registerImpact(p, n, -vn * 0.7); _c1.copy(n).negate(); B.registerImpact(p, _c1, -vn * 0.7); }
+  }
+  const c = Math.min(pen, 0.2);
+  A.pos.addScaledVector(n, c * 0.5 * mB / (mA + mB) * 1.2); B.pos.addScaledVector(n, -c * 0.5 * mA / (mA + mB) * 1.2);
+}
+export function vehicleCollide(A, B) {
+  if (A.pos.distanceToSquared(B.pos) > 49) return;
+  for (const [P, Q] of [[A, B], [B, A]]) {
+    const hp = P._hp; if (!hp) continue;
+    for (let i = 0; i < hp.length; i++) {
+      const pen = pointInBoxes(Q, hp[i], _n);
+      if (pen > 0) { if (P === A) twoBody(A, B, hp[i], _n, pen); else twoBody(B, A, hp[i], _n, pen); }
+    }
+  }
 }

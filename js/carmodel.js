@@ -717,6 +717,8 @@ export class CarModel {
     }
   }
 
+  lampOut() { return this.details.some(d => d.hidden && (d.mesh.material === this.lensMat || d.mesh.material === this.tailMat)); }
+
   repair() {
     this.low.reset(); this.gh.reset();
     for (const d of this.details) { d.mesh.position.copy(d.p0); d.mesh.rotation.copy(d.r0); d.mesh.visible = true; d.acc = 0; d.hidden = false; }

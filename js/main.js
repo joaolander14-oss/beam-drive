@@ -13,14 +13,16 @@ import { buildRealWorld } from './realworld.js';
 import { CarAudio } from './audio.js';
 import { Particles, SkidMarks } from './fx.js';
 import { UI } from './ui.js';
+import { Traffic } from './bots.js';
 import { CATS } from './catalog.js';
 
 const $ = s => document.querySelector(s);
 const DT = 1 / 240;
+const now_ = () => performance.now() / 1000;
 
 const App = {
   cfg: null, spec: null, mapId: 'campo', world: null, veh: null, model: null,
-  opt: { time: 'dia', wet: 0, volume: 0.6, units: 'kmh', shadows: 1, pixel: 1, timeScale: 1, telemetry: false },
+  opt: { time: 'dia', wet: 0, volume: 0.6, units: 'kmh', shadows: 1, pixel: 1, timeScale: 1, telemetry: false, bots: 6 },
   menuOpen: true, paused: false, camMode: 0, camYaw: 0, camPitch: 0.0, camDist: 1, orbitYaw: 0, orbitPitch: 0.16, lookBack: false,
   keys: {}, steerRaw: 0, steerSm: 0, lights: false, lightMode: 0, fog: false, sigL: false, sigR: false, haz: false, wipers: 0, bulb: 0, miniZoom: 0.35, miniNorth: false, acc: 0, simTime: 0,
   meas: { t100: null, brake: null, top: 0, latG: 0, run: null, dist: 0 }, lap: null,
@@ -94,6 +96,8 @@ const nextFrame = () => new Promise(r => setTimeout(r, 30));
 // ---------------- som, efeitos ----------------
 const audio = new CarAudio();
 let particles, skid;
+const traffic = new Traffic(App); App.traffic = traffic;
+App.setBots = n => { App.opt.bots = n; traffic.setCount(n); toast(n ? n + ' bots no tráfego' : 'Sem bots'); };
 
 // ---------------- mapas ----------------
 App.loadMap = async function (id) {
@@ -112,6 +116,7 @@ App.loadMap = async function (id) {
   App.setWet(App.opt.wet);
   App.setTime(App.opt.time);
   App.respawn(true);
+  traffic.count = App.opt.bots; traffic.rebuild(w);
   ld.classList.add('hidden');
   console.log('mapa', id, 'em', Math.round(performance.now() - t0), 'ms');
   if (App.ui) App.ui.refreshAll();
@@ -220,6 +225,7 @@ addEventListener('keydown', e => {
     case 'KeyB': App.fog = !App.fog; toast(App.fog ? 'Farol de neblina ligado' : 'Farol de neblina desligado'); break;
     case 'KeyJ': App.sigL = !App.sigL; App.sigR = false; App.haz = false; App.sigPeak = 0; toast(App.sigL ? 'Seta esquerda' : 'Seta desligada'); break;
     case 'KeyK': App.sigR = !App.sigR; App.sigL = false; App.haz = false; App.sigPeak = 0; toast(App.sigR ? 'Seta direita' : 'Seta desligada'); break;
+    case 'KeyZ': App.belt = !App.belt; toast(App.belt ? 'Cinto de segurança afivelado' : 'Cinto solto'); break;
     case 'KeyX': App.haz = !App.haz; if (App.haz) { App.sigL = App.sigR = false; } toast(App.haz ? 'Pisca-alerta ligado' : 'Pisca-alerta desligado'); break;
     case 'KeyO': App.wipers = (App.wipers + 1) % 3; toast(['Limpador desligado', 'Limpador lento', 'Limpador rápido'][App.wipers]); break;
     case 'KeyI': App.toggleIgnition(); break;
@@ -467,9 +473,10 @@ function drawHud() {
   hx.restore();
   // ---- painel de alertas (luzes do painel de instrumentos) ----
   {
-    const t = 34 * u, gap = 6 * u, blink = Math.floor(performance.now() / 330) % 2 === 0, bulb = App.bulb > 0;
-    const ev = E.kind === 'ev', fuelF = v.fuel / v.tank, anyWheel = v.dmg.wheel.some(d => d > 0.3);
-    const tiles = [
+    const t = 30 * u, gap = 5 * u, blink = Math.floor(performance.now() / 330) % 2 === 0, bulb = App.bulb > 0;
+    const ev = E.kind === 'ev', fuelF = v.fuel / v.tank, anyWheel = v.dmg.wheel.some(d => d > 0.3), lamps = App.model.lampOut();
+    const lim = App.limit || 0, kmh = Math.abs(v.fwdSpeed) * 3.6, speeding = lim > 0 && kmh > lim + 6;
+    const row1 = [
       { arrow: -1, on: (App.sigL || App.haz) && blink, col: '#3cff6a' },
       { s: '⚙', lab: 'MOTOR', on: v.dmg.engine > 0.25 || (v.cutT > 0 && v.pedalThr > 0.8), col: v.dmg.engine > 0.6 ? '#ff3a30' : '#ffb020' },
       { s: '🌡', lab: 'TEMP', on: v.temp > 108, col: '#ff3a30' },
@@ -481,28 +488,46 @@ function drawHud() {
       { s: 'TC', on: v.tcAct ? blink : !v.spec.tc, col: '#ffb020', off: !v.spec.tc },
       { s: 'ESC', on: v.escAct ? blink : !v.spec.esc, col: '#ffb020', off: !v.spec.esc },
       { s: '◎!', lab: 'PNEUS', on: anyWheel, col: '#ffb020' },
-      { s: '≣D', lab: 'ALTO', on: App.lightMode === 3, col: '#4aa8ff' },
-      { s: '≡D', lab: 'BAIXO', on: App.lightMode === 2, col: '#3cff6a' },
-      { s: 'D≡', lab: 'NEBL.', on: App.fog, col: '#ffd23a' },
-      { s: v.cruise > 0 ? String(Math.round(v.cruise * (mph ? 2.237 : 3.6))) : '⏱', lab: 'PILOTO', on: v.cruise > 0, col: '#3cff6a' },
+      { s: 'SRS', lab: 'AIRBAG', on: v.airbag, col: '#ff3a30' },
+      { s: 'CINTO', on: !App.belt && Math.abs(v.fwdSpeed) > 2 ? blink : !App.belt, col: '#ff3a30' },
       { arrow: 1, on: (App.sigR || App.haz) && blink, col: '#3cff6a' },
     ];
-    if (App.spec.cfg.nitro) tiles.splice(14, 0, { s: 'N₂O', lab: Math.max(0, v.nitroLeft).toFixed(0) + 's', on: v.nitroOn, col: '#58e0ff' });
-    const total = tiles.length * (t + gap) - gap, x0 = W / 2 - total / 2, y0 = H - t - 22 * u;
-    const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
-    tiles.forEach((tl, i) => {
-      const x = x0 + i * (t + gap), lit = tl.on || bulb;
-      hx.fillStyle = lit ? rgba(tl.col, 0.2) : 'rgba(12,18,30,.62)'; hx.beginPath(); hx.roundRect(x, y0, t, t, 6 * u); hx.fill();
-      hx.strokeStyle = lit ? tl.col : '#222d45'; hx.lineWidth = 1.5 * u; hx.stroke();
-      hx.textAlign = 'center'; hx.textBaseline = 'middle';
-      if (tl.arrow) { hx.fillStyle = lit ? tl.col : '#1f2a42'; hx.beginPath(); const cxx = x + t / 2, cyy = y0 + t / 2, d = tl.arrow; hx.moveTo(cxx + d * 11 * u, cyy); hx.lineTo(cxx - d * 7 * u, cyy - 11 * u); hx.lineTo(cxx - d * 7 * u, cyy + 11 * u); hx.closePath(); hx.fill(); }
-      else {
-        hx.fillStyle = lit ? tl.col : '#2a3652'; hx.font = `bold ${(tl.s.length > 2 ? 12 : 18) * u}px Segoe UI Emoji, Segoe UI`;
-        hx.fillText(tl.s, x + t / 2, y0 + t * (tl.lab || tl.off ? 0.40 : 0.5));
-        if (tl.lab || tl.off) { hx.font = `bold ${7.5 * u}px Segoe UI`; hx.fillStyle = lit ? tl.col : '#33415f'; hx.fillText(tl.off ? 'OFF' : tl.lab, x + t / 2, y0 + t * 0.82); }
-      }
-    });
+    const row2 = [
+      { s: '☼', lab: 'POS', on: App.lightMode === 1, col: '#3cff6a' },
+      { s: '≡D', lab: 'BAIXO', on: App.lightMode === 2, col: '#3cff6a' },
+      { s: '≣D', lab: 'ALTO', on: App.lightMode === 3, col: '#4aa8ff' },
+      { s: 'D≡', lab: 'NEBL.', on: App.fog, col: '#ffd23a' },
+      { s: '💡!', lab: 'LÂMPADA', on: lamps, col: '#ffb020' },
+      { s: '((•))', lab: 'DISCO', on: v.brakeHeat > 0.85, col: '#ff3a30' },
+      { s: '≈🌡', lab: 'LÍQ.', on: v.dmg.rad > 0.4, col: '#ff3a30' },
+      { s: '4x4', on: v.spec.driveline.layout === 'awd', col: '#3cff6a' },
+      { s: '⏲', lab: lim ? lim + ' km/h' : 'VEL.', on: speeding ? blink : false, col: '#ff3a30' },
+      { s: v.cruise > 0 ? String(Math.round(v.cruise * (mph ? 2.237 : 3.6))) : '⏱', lab: 'PILOTO', on: v.cruise > 0, col: '#3cff6a' },
+      { s: 'RPM', lab: 'LIMITE', on: v.cutT > 0, col: '#ff3a30' },
+      { s: ev ? '🚗' : '🔑', lab: 'PRONTO', on: v.engineOn && App.bulb <= 0 && ev, col: '#3cff6a' },
+    ];
+    if (App.spec.cfg.nitro) row2.push({ s: 'N₂O', lab: Math.max(0, v.nitroLeft).toFixed(0) + 's', on: v.nitroOn, col: '#58e0ff' });
+    const rgba = (hex, al) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${al})`; };
+    const drawRow = (tiles, y0) => {
+      const total = tiles.length * (t + gap) - gap, x0 = W / 2 - total / 2;
+      tiles.forEach((tl, i) => {
+        const x = x0 + i * (t + gap), lit = tl.on || bulb;
+        hx.fillStyle = lit ? rgba(tl.col, 0.2) : 'rgba(12,18,30,.62)'; hx.beginPath(); hx.roundRect(x, y0, t, t, 5 * u); hx.fill();
+        hx.strokeStyle = lit ? tl.col : '#222d45'; hx.lineWidth = 1.4 * u; hx.stroke();
+        hx.textAlign = 'center'; hx.textBaseline = 'middle';
+        if (tl.arrow) { hx.fillStyle = lit ? tl.col : '#1f2a42'; hx.beginPath(); const cxx = x + t / 2, cyy = y0 + t / 2, d = tl.arrow; hx.moveTo(cxx + d * 10 * u, cyy); hx.lineTo(cxx - d * 6 * u, cyy - 10 * u); hx.lineTo(cxx - d * 6 * u, cyy + 10 * u); hx.closePath(); hx.fill(); }
+        else {
+          const L = tl.s.length, fs = L <= 2 ? 15 : L === 3 ? 11 : 8.5;
+          hx.fillStyle = lit ? tl.col : '#2a3652'; hx.font = `bold ${fs * u}px Segoe UI Emoji, Segoe UI`;
+          hx.fillText(tl.s, x + t / 2, y0 + t * (tl.lab || tl.off ? 0.38 : 0.5));
+          if (tl.lab || tl.off) { hx.font = `bold ${6.5 * u}px Segoe UI`; hx.fillStyle = lit ? tl.col : '#33415f'; hx.fillText(tl.off ? 'OFF' : tl.lab, x + t / 2, y0 + t * 0.82); }
+        }
+      });
+    };
+    const y2 = H - t - 14 * u; drawRow(row2, y2); drawRow(row1, y2 - t - gap);
     hx.textAlign = 'left'; hx.textBaseline = 'alphabetic';
+    // placa do limite de velocidade da via
+    if (lim > 0) { const px2 = cx + R * 0.66, py2 = cy - R - 22 * u, rr = 25 * u; hx.beginPath(); hx.arc(px2, py2, rr, 0, 7); hx.fillStyle = speeding && blink ? '#ff3a30' : '#c4161c'; hx.fill(); hx.beginPath(); hx.arc(px2, py2, rr * 0.74, 0, 7); hx.fillStyle = '#fff'; hx.fill(); hx.fillStyle = '#111'; hx.font = `bold ${17 * u}px Segoe UI`; hx.textAlign = 'center'; hx.textBaseline = 'middle'; hx.fillText(String(lim), px2, py2 + 1 * u); hx.textAlign = 'left'; hx.textBaseline = 'alphabetic'; }
   }
   const pill = () => 0;
   let px = 0, py = 0;
@@ -564,6 +589,11 @@ function drawMinimap(u) {
   hx.restore();
   hx.lineWidth = 3 * u; hx.strokeStyle = 'rgba(10,14,24,.9)'; hx.beginPath(); hx.arc(cx, cy, R, 0, 7); hx.stroke();
   hx.lineWidth = 1.5 * u; hx.strokeStyle = '#46567f'; hx.beginPath(); hx.arc(cx, cy, R - 1.5 * u, 0, 7); hx.stroke();
+  for (const bt of traffic.bots) {
+    const ddx = (bt.v.pos.x - v.pos.x) * App.miniZoom, ddz = (bt.v.pos.z - v.pos.z) * App.miniZoom, rx = ddx * Math.cos(rot) - ddz * Math.sin(rot), ry = ddx * Math.sin(rot) + ddz * Math.cos(rot);
+    if (Math.hypot(rx, ry) > R - 5 * u) continue;
+    hx.fillStyle = '#4aa8ff'; hx.strokeStyle = '#0b1320'; hx.lineWidth = 1 * u; hx.beginPath(); hx.arc(cx + rx, cy + ry, 3.6 * u, 0, 7); hx.fill(); hx.stroke();
+  }
   // carro
   hx.save(); hx.translate(cx, cy); hx.rotate(App.miniNorth ? Math.PI / 2 - yaw : 0);
   hx.fillStyle = '#ff5a1a'; hx.strokeStyle = '#fff'; hx.lineWidth = 1.5 * u; hx.beginPath(); hx.moveTo(0, -9 * u); hx.lineTo(6.5 * u, 8 * u); hx.lineTo(0, 4 * u); hx.lineTo(-6.5 * u, 8 * u); hx.closePath(); hx.fill(); hx.stroke(); hx.restore();
@@ -606,13 +636,16 @@ App.step = function (dt, render = true) {
     updateInputs(dt);
     App.acc += dt * App.opt.timeScale;
     let n = 0;
-    while (App.acc >= DT && n < 40) { v.step(DT); App.acc -= DT; App.simTime += DT; n++; }
+    while (App.acc >= DT && n < 40) { v.step(DT); traffic.step(DT, v); App.acc -= DT; App.simTime += DT; n++; }
     if (n === 40) App.acc = 0;
     w.updateProps(dt * App.opt.timeScale, v);
     if (w.anim) w.anim(performance.now() / 1000);
     emitFx(dt);
     updateMeasure(dt * App.opt.timeScale);
   }
+  traffic.update(dt, run);
+  if (run && now_() - (App._limT || 0) > 0.4) { App._limT = now_(); App.limit = traffic.limitAt(v.pos.x, v.pos.z); }
+  if (run && !App.belt && Math.abs(v.fwdSpeed) > 7 && now_() - (App._beltT || 0) > 9) { App._beltT = now_(); audio.chime(); }
   // luzes
   const reversing = v.gear === -1 && v.pedalThr > 0.05;
   const blink = Math.floor(performance.now() / 330) % 2 === 0;
@@ -674,3 +707,68 @@ App.view = function (yaw, pitch = 0.15, dist = null) {
   camera.lookAt(v.pos.x, v.pos.y - sp.cgH + 0.6, v.pos.z); camera.fov = 40; camera.updateProjectionMatrix();
   renderer.render(scene, camera);
 };
+
+
+// ---------------- painel de botões do carro (equivalem às teclas; sem freio/acelerador) ----------------
+const DASH = [
+  ['KeyL', '💡', 'Faróis', 'L', () => ({ on: App.lightMode > 0, sub: ['apagado', 'posição', 'baixo', 'alto'][App.lightMode] })],
+  ['KeyB', '🌫', 'Neblina', 'B', () => ({ on: App.fog })],
+  ['KeyJ', '◀', 'Seta esq.', 'J', () => ({ on: App.sigL })],
+  ['KeyK', '▶', 'Seta dir.', 'K', () => ({ on: App.sigR })],
+  ['KeyX', '⚠', 'Alerta', 'X', () => ({ on: App.haz })],
+  ['KeyO', '🌧', 'Limpador', 'O', () => ({ on: App.wipers > 0, sub: ['off', 'lento', 'rápido'][App.wipers] })],
+  ['KeyI', '🔑', 'Motor', 'I', () => ({ on: App.veh.engineOn, sub: App.veh.engineOn ? 'ligado' : 'off' })],
+  ['KeyY', '⏱', 'Piloto aut.', 'Y', () => ({ on: App.veh.cruise > 0, sub: App.veh.cruise > 0 ? Math.round(App.veh.cruise * 3.6) + '' : '' })],
+  ['KeyH', '📯', 'Buzina', 'H', () => ({}), true],
+  ['KeyT', '⚙', 'Câmbio', 'T', () => ({ on: App.veh.trans === 'manual', sub: App.veh.trans === 'manual' ? 'manual' : 'auto' })],
+  ['KeyE', '▲', 'Marcha +', 'E', () => ({})],
+  ['KeyQ', '▼', 'Marcha −', 'Q', () => ({})],
+  ['KeyZ', '🔒', 'Cinto', 'Z', () => ({ on: App.belt })],
+  ['KeyN', '⚡', 'Nitro', 'N', () => ({ on: App.veh.nitroOn }), true],
+  ['KeyC', '🎥', 'Câmera', 'C', () => ({ sub: CAMS[App.camMode] })],
+  ['KeyV', '↶', 'Olhar atrás', 'V', () => ({}), true],
+  ['KeyR', '↻', 'Desvirar', 'R', () => ({})],
+  ['KeyU', '🧭', 'Minimapa', 'U', () => ({ on: App.miniNorth, sub: App.miniNorth ? 'norte' : 'gira' })],
+  ['KeyF', '📊', 'Telemetria', 'F', () => ({ on: App.opt.telemetry })],
+  ['KeyP', '⏸', 'Pausa', 'P', () => ({ on: App.paused })],
+  ['KeyG', '🔧', 'Garagem', 'G', () => ({})],
+  ['KeyM', '🗺', 'Mapas', 'M', () => ({})],
+];
+let dashEl = null;
+function buildDash() {
+  dashEl = document.createElement('div'); dashEl.id = 'dash';
+  const head = document.createElement('div'); head.className = 'dh'; head.innerHTML = '<b>Painel do carro</b><span>clique ou use as teclas</span><button id="dtog" title="recolher">▾</button>'; dashEl.append(head);
+  const grid = document.createElement('div'); grid.className = 'dg'; dashEl.append(grid);
+  head.querySelector('#dtog').onclick = () => { dashEl.classList.toggle('min'); head.querySelector('#dtog').textContent = dashEl.classList.contains('min') ? '▴' : '▾'; positionDash(); };
+  for (const [code, ic, lb, key, st, hold] of DASH) {
+    const b = document.createElement('button'); b.className = 'db'; b.dataset.code = code; b.tabIndex = -1;
+    b.innerHTML = `<i>${ic}</i><span class="lb">${lb}</span><span class="sb"></span><kbd>${key === 'Delete' ? 'Del' : key}</kbd>`;
+    const fire = (type) => window.dispatchEvent(new KeyboardEvent(type, { code, key, bubbles: true }));
+    b.addEventListener('pointerdown', e => { e.preventDefault(); fire('keydown'); if (!hold) setTimeout(() => fire('keyup'), 30); });
+    if (hold) { const up = () => fire('keyup'); b.addEventListener('pointerup', up); b.addEventListener('pointerleave', up); }
+    b.addEventListener('click', e => e.preventDefault());
+    grid.append(b);
+  }
+  document.body.append(dashEl); positionDash();
+}
+function positionDash() {
+  if (!dashEl) return;
+  const W = innerWidth, H = innerHeight, u = Math.min(W, H) / 820, bs = Math.max(40, 44 * u);
+  dashEl.style.setProperty('--bs', bs + 'px'); dashEl.style.fontSize = Math.max(10, 11 * u) + 'px';
+  const tachLeft = W - 330 * u - 18, strip = 92 * u;
+  const cols = 8, width = cols * bs + (cols - 1) * 3 + 16;
+  dashEl.style.width = width + 'px';
+  dashEl.style.right = Math.max(8, W - (tachLeft - 10)) + 'px'; dashEl.style.bottom = (strip + 18 * u) + 'px';
+}
+function updateDash() {
+  if (!dashEl) return;
+  const bs = dashEl.querySelectorAll('.db'); let i = 0;
+  for (const [code, , , , st] of DASH) { const r = st() || {}, b = bs[i++]; b.classList.toggle('on', !!r.on); const sb = b.querySelector('.sb'); const t = r.sub || ''; if (sb.textContent !== t) sb.textContent = t; }
+}
+setInterval(updateDash, 120);
+addEventListener('resize', positionDash);
+buildDash();
+const _open = App.openMenu, _close = App.closeMenu;
+App.openMenu = function (t) { dashEl.style.display = 'none'; return _open(t); };
+App.closeMenu = function () { dashEl.style.display = ''; return _close(); };
+dashEl.style.display = 'none';

@@ -65,3 +65,10 @@ nos lotes ainda vazios ao longo de ruas residenciais, com **casas genéricas** (
 - **Sinalização conforme o OpenStreetMap:** semáforos nos cruzamentos que realmente têm (um conjunto para cada sentido de chegada, com braço sobre a pista nas vias largas e placa com o nome das ruas),
   PARE/dê a preferência na via secundária (usa a hierarquia e a direção cadastradas), placas de velocidade (maxspeed), proibido entrar/estacionar, advertências, pontos de ônibus com abrigo, radares e lombadas (físicas) onde cadastrados.
 - Não há fonte gratuita sem chave que enxergue placas da rua (Street View/Mapillary exigem chave): onde o OpenStreetMap não tem a placa, ela não aparece.
+
+## Tráfego de bots
+No seletor do Mundo Real, na aba **Mapas** e em **Opções** há um controle de **bots (0–40)**. Os bots dirigem pelas ruas na faixa da direita, respeitam semáforos, PARE, preferencial e limites de velocidade, mantêm distância do carro da frente, piscam nas curvas e **colidem de verdade** com você e entre si. Nos mapas pequenos eles seguem um circuito próprio. Aparecem como pontos no minimapa. Bots presos ou capotados são reposicionados.
+No Mundo Real, a opção **sinalização genérica** adiciona semáforos, PARE/preferencial e placas de velocidade nos cruzamentos onde o OpenStreetMap não tem dados.
+
+## Painel do carro e alertas
+Perto do velocímetro há um **painel de botões** com as teclas do carro (faróis, neblina, setas, alerta, limpador, ignição, piloto automático, buzina etc. — todas menos acelerador e freio); clique ou use o teclado. Luzes de alerta: SRS (airbag), cinto (Z), lâmpada queimada, disco de freio quente, líquido, 4x4, limite de velocidade, piloto, RPM, combustível/bateria, motor, óleo, temperatura.

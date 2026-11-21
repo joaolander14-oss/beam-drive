@@ -24,6 +24,8 @@ export async function openRealPicker(app) {
       <span id="rminfo" class="hint"></span>
       <label class="rmopt"><input type="checkbox" id="rmov" checked> casas do Overture Maps</label>
       <label class="rmopt"><input type="checkbox" id="rmgn" checked> casas genéricas nos lotes vazios</label>
+      <label class="rmopt"><input type="checkbox" id="rmgs" checked> sinalização genérica (sem dados)</label>
+      <label class="rmopt">bots <input type="range" id="rmbots" min="0" max="40" value="6" style="width:90px"> <b id="rmbn">6</b></label>
       <button id="rmgen" class="primary">Gerar mapa 3D</button>
       <button id="rmx" class="sm">Cancelar</button>
     </div>
@@ -32,6 +34,7 @@ export async function openRealPicker(app) {
   document.body.append(root);
   const $ = s => root.querySelector(s), stat = t => { $('#rmstat').textContent = t; $('#rmstat').style.display = t ? 'block' : 'none'; };
   $('#rmx').onclick = () => root.remove();
+  $('#rmbots').value = app.opt.bots; $('#rmbn').textContent = app.opt.bots; $('#rmbots').oninput = () => { $('#rmbn').textContent = $('#rmbots').value; app.opt.bots = +$('#rmbots').value; };
   try { await loadLeaflet(); } catch (e) { stat(e.message); return; }
   const L = window.L;
   const map = L.map('rmmap', { zoomControl: true }).setView([-23.5614, -46.6559], 15);
@@ -64,14 +67,19 @@ export async function openRealPicker(app) {
     const b = rect.getBounds(); const [w, h] = dims(b);
     if (w < 150 || h < 150) { stat('Área muito pequena (mínimo ~150 m).'); return; }
     $('#rmgen').disabled = true;
-    try { const D = await fetchRealData({ s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() }, stat, name, { overture: $('#rmov').checked, generic: $('#rmgn').checked }); stat('Construindo o mapa 3D…'); await new Promise(r => setTimeout(r, 50)); document.removeEventListener('mouseup', end); root.remove(); await app.loadRealMap(D); }
+    try { const D = await fetchRealData({ s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() }, stat, name, { overture: $('#rmov').checked, generic: $('#rmgn').checked, genericSigns: $('#rmgs').checked }); stat('Construindo o mapa 3D…'); await new Promise(r => setTimeout(r, 50)); document.removeEventListener('mouseup', end); root.remove(); await app.loadRealMap(D); }
     catch (e) { console.error(e); stat('Erro: ' + e.message + ' — tente de novo ou reduza a área.'); $('#rmgen').disabled = false; }
   };
   setTimeout(() => map.invalidateSize(), 100);
 }
 
+// cache persistente (IndexedDB, 24 h): repetir uma área é instantâneo e poupa os servidores públicos
+const idb = () => new Promise((res, rej) => { try { const r = indexedDB.open('beamdrive-osm', 1); r.onupgradeneeded = () => r.result.createObjectStore('q'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); } });
+async function idbGet(k) { try { const db = await idb(); return await new Promise(res => { const g = db.transaction('q').objectStore('q').get(k); g.onsuccess = () => res(g.result); g.onerror = () => res(null); }); } catch (e) { return null; } }
+async function idbPut(k, v) { try { const db = await idb(); db.transaction('q', 'readwrite').objectStore('q').put(v, k); } catch (e) { /* sem cache */ } }
 async function overpass(q, stat) {
   if (cacheQ.has(q)) return cacheQ.get(q);
+  { const c = await idbGet(q); if (c && Date.now() - c.t < 86400000) { stat('Usando dados em cache deste local…'); cacheQ.set(q, c.j); return c.j; } }
   let err;
   for (let round = 1; round <= 3; round++) {
     stat(`Baixando ruas e prédios — tentando ${OVERPASS.length} servidores gratuitos (tentativa ${round}/3)…`);
@@ -79,7 +87,7 @@ async function overpass(q, stat) {
     const tasks = OVERPASS.map((url, i) => fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ctls[i].signal })
       .then(async r => { if (!r.ok) throw new Error(new URL(url).host + ' HTTP ' + r.status); const j = await r.json(); if (!j.elements) throw new Error('resposta vazia'); return j; }));
     const timer = setTimeout(() => ctls.forEach(c => c.abort()), 60000);
-    try { const j = await Promise.any(tasks); clearTimeout(timer); ctls.forEach(c => c.abort()); cacheQ.set(q, j); return j; }
+    try { const j = await Promise.any(tasks); clearTimeout(timer); ctls.forEach(c => c.abort()); cacheQ.set(q, j); idbPut(q, { t: Date.now(), j }); return j; }
     catch (e) { clearTimeout(timer); err = e.errors ? e.errors.map(x => x.message).join('; ') : e.message; await new Promise(r => setTimeout(r, 2500)); }
   }
   throw new Error('os servidores públicos do OpenStreetMap estão sobrecarregados agora (' + err + '). Tente novamente em alguns minutos ou use uma área menor');
