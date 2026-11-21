@@ -74,25 +74,42 @@ export function buildRealWorld(D) {
   const roads = D.roads.filter(r => r.pts.length > 1);
   for (const r of roads) stamp(r.pts, r.w / 2, r.off ? (r.type === 'track' ? 2 : 5) : (r.type === 'pedestrian' ? 1 : 0));
 
-  // ---- perfil suave das ruas: o terreno é nivelado ao longo (e através) da pista => asfalto reto e liso ----
-  const samp = [], gridR = new Map(), CR = 16;
+  // ---- perfil das ruas: o terreno é terraplenado — perfil longitudinal suave, inclinação máxima, cruzamentos na mesma cota
+  //      e pista sem inclinação lateral (plana de borda a borda), com talude suave até o terreno natural ----
+  const RS = [], gridR = new Map(), CR = 16, STEPR = 4;
+  const smooth = (ys, passes, half) => { for (let pass = 0; pass < passes; pass++) { const t = ys.slice(); for (let i = 0; i < ys.length; i++) { let sum = 0, c = 0; for (let k = -half; k <= half; k++) { const j = i + k; if (j >= 0 && j < ys.length) { sum += ys[j]; c++; } } t[i] = sum / c; } for (let i = 0; i < ys.length; i++) ys[i] = t[i]; } };
+  const limitGrade = (ys, g) => { for (let it = 0; it < 2; it++) { for (let i = 1; i < ys.length; i++) ys[i] = clamp(ys[i], ys[i - 1] - g * STEPR, ys[i - 1] + g * STEPR); for (let i = ys.length - 2; i >= 0; i--) ys[i] = clamp(ys[i], ys[i + 1] - g * STEPR, ys[i + 1] + g * STEPR); } };
   for (const r of roads) {
     if (r.pts.length < 2 || (r.off && r.w < 2.2)) continue;
-    const pts = [r.pts[0]]; along(r.pts, 4, (x, z) => pts.push([x, z])); pts.push(r.pts[r.pts.length - 1]);
-    let ys = pts.map(([x, z]) => D.elev(x, z) - D.base);
-    for (let pass = 0; pass < 4; pass++) { const t = ys.slice(); for (let i = 0; i < ys.length; i++) { let sum = 0, c = 0; for (let k = -4; k <= 4; k++) { const j = i + k; if (j >= 0 && j < ys.length) { sum += ys[j]; c++; } } t[i] = sum / c; } ys = t; }
+    const pts = [r.pts[0]]; along(r.pts, STEPR, (x, z) => pts.push([x, z])); pts.push(r.pts[r.pts.length - 1]);
+    const ys = pts.map(([x, z]) => D.elev(x, z) - D.base);
+    smooth(ys, 6, 6);
     const hwE = r.w / 2 + (r.off ? 0.6 : hasSidewalk(r) ? 2.6 : 1.0);
-    pts.forEach(([x, z], i) => { const o = { x, z, y: ys[i], hw: hwE }; samp.push(o); const key = Math.floor(x / CR) * 20011 + Math.floor(z / CR); (gridR.get(key) || gridR.set(key, []).get(key)).push(o); });
+    const R = { pts, ys, hw: hwE, off: !!r.off, ri: RS.length }; RS.push(R);
+    pts.forEach(([x, z], i) => { const o = { x, z, R, i }; const key = Math.floor(x / CR) * 20011 + Math.floor(z / CR); (gridR.get(key) || gridR.set(key, []).get(key)).push(o); });
   }
+  // cruzamentos: as vias que se encontram são levadas à mesma cota (média das cotas num raio de ~8 m), depois suaviza de novo
+  for (let it = 0; it < 4; it++) {
+    const nv = RS.map(R => R.ys.slice());
+    for (const R of RS) R.pts.forEach(([x, z], i) => {
+      let sum = R.ys[i], c = 1; const cx = Math.floor(x / CR), cz = Math.floor(z / CR);
+      for (let a2 = -1; a2 <= 1; a2++) for (let b2 = -1; b2 <= 1; b2++) { const l = gridR.get((cx + a2) * 20011 + (cz + b2)); if (l) for (const o of l) if (o.R !== R && Math.hypot(o.x - x, o.z - z) < 8) { sum += o.R.ys[o.i]; c++; } }
+      nv[R.ri][i] = sum / c;
+    });
+    for (const R of RS) { R.ys = nv[R.ri]; smooth(R.ys, 2, 2); }
+  }
+  for (const R of RS) limitGrade(R.ys, R.off ? 0.16 : 0.09);
   const roadAt = (x, z) => {
-    let best = null, bv = 1e9; const cx = Math.floor(x / CR), cz = Math.floor(z / CR);
-    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) { const a = gridR.get((cx + i) * 20011 + (cz + j)); if (a) for (const o of a) { const d = Math.hypot(o.x - x, o.z - z) - o.hw; if (d < bv) { bv = d; best = o; } } }
-    return best ? { y: best.y, d: bv } : null;
+    let bv = 1e9; const cx = Math.floor(x / CR), cz = Math.floor(z / CR), near = [];
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) { const a = gridR.get((cx + i) * 20011 + (cz + j)); if (a) for (const o of a) { const d = Math.hypot(o.x - x, o.z - z) - o.R.hw; near.push([d, o.R.ys[o.i]]); if (d < bv) bv = d; } }
+    if (bv >= 1e8) return null;
+    let sw = 0, sy = 0; for (const [d, y] of near) if (d - bv < 3) { const wt = Math.exp(-(d - bv) * 1.2); sw += wt; sy += wt * y; }
+    return { y: sy / sw, d: bv };
   };
   w.genTerrain((x, z) => {
     let h = D.elev(x, z) - D.base;
     const rd = roadAt(x, z);
-    if (rd && rd.d < 3.5) { const t = rd.d <= 0 ? 0 : Math.min(1, rd.d / 3.5), e = t * t * (3 - 2 * t); return rd.y + (h - rd.y) * e; }
+    if (rd && rd.d < 16) { const band = clamp(Math.abs(h - rd.y) * 1.8, 3.5, 16); if (rd.d < band) { const t = rd.d <= 0 ? 0 : Math.min(1, rd.d / band), e = t * t * (3 - 2 * t); return rd.y + (h - rd.y) * e; } }
     const k = w.S[clamp(Math.floor((z - z0) / sc), 0, NS - 1) * NS + clamp(Math.floor((x - x0) / sc), 0, NS - 1)];
     if (k === 9) h -= 1.3;
     return h;

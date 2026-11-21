@@ -28,7 +28,7 @@ function buildNav(w) {
     const vm = new Map(), roads = w.navRoads;
     for (const r of roads) { r.lim = (r.ms || LIMIT[r.type] || 40) / 3.6; r.ids.forEach((id, i) => { if (i < r.pts.length) (vm.get(id) || vm.set(id, []).get(id)).push({ r, i }); }); }
     const grid = new Map(), C = 25;
-    for (const r of roads) for (const p of r.pts) { const k = Math.floor(p[0] / C) * 20011 + Math.floor(p[1] / C); (grid.get(k) || grid.set(k, []).get(k)).push([p[0], p[1], r]); }
+    for (const r of roads) r.pts.forEach((p, i) => { const k = Math.floor(p[0] / C) * 20011 + Math.floor(p[1] / C); (grid.get(k) || grid.set(k, []).get(k)).push([p[0], p[1], r, i]); });
     return { kind: 'graph', roads, vm, grid, C };
   }
   let loop = null, lim = 14;
@@ -38,14 +38,25 @@ function buildNav(w) {
   return null;
 }
 
-export class Traffic {
-  constructor(app) { this.app = app; this.bots = []; this.nav = null; this.acc = 0; this.count = 0; }
+const LIVE_R = 1000, LIVE_MAX = 28, YAW = v => Math.atan2(-v.ax.z, v.ax.x);
 
-  rebuild(world) {
-    this.clear(); this.world = world; this.nav = buildNav(world);
-    this.setCount(this.count);
+// Cada bot é um REGISTRO (posição guardada). Só os registros a até 1 km do jogador viram carros de verdade
+// (física + modelo 3D + colisão); os demais ficam parados no lugar, sem custo, e voltam quando você chega perto.
+export class Traffic {
+  constructor(app) { this.app = app; this.bots = []; this.recs = []; this.nav = null; this.acc = 0; this.count = 0; this.hyT = 0; }
+
+  rebuild(world, keep = false) {
+    this.clearLive(); this.world = world; this.nav = buildNav(world);
+    if (!keep) this.recs = [];
+    this.ensure(); this.hydrate(true);
   }
-  clear() { for (const b of this.bots) { this.app.scene.remove(b.model.root); b.model.dispose(); } this.bots = []; }
+  // guarda a posição dos carros vivos nos registros (antes de trocar de mapa ou de região)
+  sync() { for (const b of this.bots) this.saveRec(b); }
+  saveRec(b) { const r = b.rec, v = b.v; if (!r || !isFinite(v.pos.x)) return; r.x = v.pos.x; r.z = v.pos.z; r.yaw = YAW(v); r.sp = Math.max(0, v.fwdSpeed); }
+  shift(ox, oz) { for (const r of this.recs) { r.x -= ox; r.z -= oz; } }
+  dispose(b) { this.app.scene.remove(b.model.root); b.model.dispose(); if (b.rec) b.rec.live = null; }
+  clearLive() { for (const b of this.bots) { this.saveRec(b); this.dispose(b); } this.bots = []; }
+  clear() { this.clearLive(); this.recs = []; }
 
   limitAt(x, z) {
     const n = this.nav; if (!n) return 0;
@@ -55,49 +66,105 @@ export class Traffic {
     return best && bd < 400 ? Math.round(best.lim * 3.6) : 0;
   }
 
-  setCount(n) {
-    this.count = n;
+  setCount(n) { this.count = n; if (this.nav) { this.ensure(); this.hydrate(true); } }
+
+  inWin(r) { const w = this.world, bd = (w.bound || 1e9) - 15; return Math.abs(r.x) < bd && Math.abs(r.z) < bd; }
+  // mantém `count` bots dentro da região carregada: cria registros que faltam, remove os mais distantes se sobrar
+  ensure() {
     if (!this.nav) return;
-    while (this.bots.length > n) { const b = this.bots.pop(); this.app.scene.remove(b.model.root); b.model.dispose(); }
-    while (this.bots.length < n) { const b = this.makeBot(); if (!b) break; this.bots.push(b); }
+    const P = this.app.veh.pos, inside = this.recs.filter(r => this.inWin(r));
+    for (let k = inside.length; k < this.count; k++) { const r = this.newRec(); if (!r) break; this.recs.push(r); }
+    if (inside.length > this.count) {
+      inside.sort((p, q) => Math.hypot(q.x - P.x, q.z - P.z) - Math.hypot(p.x - P.x, p.z - P.z));
+      for (const r of inside.slice(0, inside.length - this.count)) { if (r.live) { this.bots.splice(this.bots.indexOf(r.live), 1); this.dispose(r.live); } this.recs.splice(this.recs.indexOf(r), 1); }
+    }
+  }
+  sample() {
+    const n = this.nav; let x, z, tx, tz, state;
+    if (n.kind === 'graph') {
+      const r = n.roads[(Math.random() * n.roads.length) | 0]; if (r.pts.length < 2) return null;
+      const i = (Math.random() * (r.pts.length - 1)) | 0, dir = r.oneway || Math.random() < 0.5 ? 1 : -1;
+      const a = r.pts[i], c = r.pts[i + dir] || r.pts[i - dir]; if (!c) return null;
+      const L = Math.hypot(c[0] - a[0], c[1] - a[1]) || 1; tx = (c[0] - a[0]) / L; tz = (c[1] - a[1]) / L;
+      const off = Math.min(r.w / 4, 2.3); x = a[0] - tz * off; z = a[1] + tx * off; state = { r, i, dir };
+    } else {
+      const k = (Math.random() * n.loop.length) | 0, a = n.loop[k], c = n.loop[(k + 1) % n.loop.length], L = Math.hypot(c.x - a.x, c.z - a.z) || 1;
+      x = a.x; z = a.z; tx = (c.x - a.x) / L; tz = (c.z - a.z) / L; state = { k };
+    }
+    return { x, z, tx, tz, state };
+  }
+  newRec() {
+    const P = this.app.veh.pos;
+    for (let t = 0; t < 80; t++) {
+      const s = this.sample(); if (!s) continue;
+      if (Math.hypot(s.x - P.x, s.z - P.z) < 35 || !this.inWin(s)) continue;
+      if (this.recs.some(o => Math.abs(o.x - s.x) < 12 && Math.abs(o.z - s.z) < 12)) continue;
+      return { car: BOT_CARS[(Math.random() * BOT_CARS.length) | 0], paint: PAINTS[(Math.random() * PAINTS.length) | 0], finish: Math.random() < 0.5 ? 'gloss' : 'metal', x: s.x, z: s.z, yaw: -Math.atan2(s.tz, s.tx), sp: 6, live: null };
+    }
+    return null;
   }
 
-  makeBot() {
-    const id = BOT_CARS[(Math.random() * BOT_CARS.length) | 0];
-    const cfg = defaultCfg(id); cfg.paint = PAINTS[(Math.random() * PAINTS.length) | 0]; cfg.steerAssist = 0; cfg.esc = false; cfg.trans = 'auto'; cfg.dif = 'lsd2'; cfg.dir = 'lsd2'; if (cfg.drive === 'awd') cfg.dc = 'active'; cfg.wing = 'none'; cfg.finish = Math.random() < 0.5 ? 'gloss' : 'metal';
+  // ---------- registros <-> carros vivos ----------
+  hydrate(now) {
+    if (!this.nav) return;
+    const P = this.app.veh.pos, t = performance.now();
+    // devolve ao "estacionamento" quem ficou longe
+    for (let i = this.bots.length - 1; i >= 0; i--) { const b = this.bots[i], d = Math.hypot(b.v.pos.x - P.x, b.v.pos.z - P.z); if (d > LIVE_R * 1.1 || !this.inWin(b.v.pos)) { this.saveRec(b); this.bots.splice(i, 1); this.dispose(b); } }
+    const cand = []; for (const r of this.recs) { if (r.live || (r.retry && t < r.retry) || !this.inWin(r)) continue; const d = Math.hypot(r.x - P.x, r.z - P.z); if (d < LIVE_R) cand.push([d, r]); }
+    cand.sort((p, q) => p[0] - q[0]);
+    let budget = now ? 14 : 2;
+    for (const [d, r] of cand) { if (this.bots.length >= LIVE_MAX || budget <= 0) break; budget--; const b = this.makeBot(r); if (b) this.bots.push(b); else r.retry = t + 8000; }
+  }
+
+  makeBot(rec) {
+    const cfg = defaultCfg(rec.car); cfg.paint = rec.paint; cfg.steerAssist = 0; cfg.esc = false; cfg.trans = 'auto'; cfg.dif = 'lsd2'; cfg.dir = 'lsd2'; if (cfg.drive === 'awd') cfg.dc = 'active'; cfg.wing = 'none'; cfg.finish = rec.finish;
     const spec = buildSpec(cfg);
     const v = new Vehicle(this.world); v.setSpec(spec); v.noReverse = true; v.trans = 'auto'; v.fuel = v.tank = 1e9;
     const model = new CarModel(spec, cfg); this.app.scene.add(model.root);
-    const b = { v, model, cfg, spec, pts: [], pi: 0, cur: null, cleared: new Map(), waitT: 0, stuckT: 0, flipT: 0, sig: 0, steer: 0, hold: false, speedLim: 12, age: 0 };
-    if (!this.place(b, true)) { this.app.scene.remove(model.root); model.dispose(); return null; }
+    const b = { v, model, cfg, spec, rec, pts: [], pi: 0, cur: null, cleared: new Map(), waitT: 0, stuckT: 0, flipT: 0, sig: 0, steer: 0, hold: false, speedLim: 12, age: 0 };
+    if (!this.placeAt(b, rec.x, rec.z, rec.yaw, rec.sp)) { this.app.scene.remove(model.root); model.dispose(); return null; }
+    rec.live = b;
     return b;
   }
 
-  // ---------- posicionamento ----------
+  // coloca o bot numa posição guardada, ligando-o à via mais próxima na direção em que estava indo
+  placeAt(b, x, z, yaw, sp0 = 6) {
+    const n = this.nav, w = this.world, hx = Math.cos(yaw), hz = -Math.sin(yaw); let state = null, tx = hx, tz = hz;
+    if (n.kind === 'graph') {
+      let bd = 64, bq = null; const cx = Math.floor(x / n.C), cz = Math.floor(z / n.C);
+      for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) { const a = n.grid.get((cx + i) * 20011 + (cz + j)); if (a) for (const q of a) { const d = (q[0] - x) ** 2 + (q[1] - z) ** 2; if (d < bd) { bd = d; bq = q; } } }
+      if (!bq) return false;
+      const r = bq[2], i = bq[3]; let best = -9, dir = 1;
+      for (const d of (r.oneway ? [1] : [1, -1])) { const c = r.pts[i + d]; if (!c) continue; const L = Math.hypot(c[0] - bq[0], c[1] - bq[1]) || 1, dot = ((c[0] - bq[0]) * hx + (c[1] - bq[1]) * hz) / L; if (dot > best) { best = dot; dir = d; } }
+      if (best === -9) return false;
+      state = { r, i, dir };
+    } else {
+      let bd = 900, bk = -1; n.loop.forEach((q, k) => { const d = (q.x - x) ** 2 + (q.z - z) ** 2; if (d < bd) { bd = d; bk = k; } });
+      if (bk < 0) return false; state = { k: bk };
+    }
+    const y = w.heightAt(x, z) + b.spec.cgH + 0.1;
+    b.v.reset(x, y, z, yaw); b.v.dmgReset(); b.model.repair();
+    b.cur = state; b.pts = []; b.pi = 0; b.raw = []; b.done = undefined; b.dead = false; b.cleared.clear(); b.stuckT = 0; b.flipT = 0; b.waitT = 0; b.offT = 0;
+    b.v.vel.set(tx * sp0, 0, tz * sp0); for (const h of b.v.wh) h.omega = sp0 / h.w.R;
+    this.extend(b, true);
+    return true;
+  }
+
+  // reposiciona um bot que travou/capotou: em outro ponto da malha perto do jogador
   place(b, anywhere = false) {
-    const n = this.nav, w = this.world, P = this.app.veh.pos;
+    const w = this.world, P = this.app.veh.pos;
     const others = [this.app.veh, ...this.bots.filter(q => q !== b).map(q => q.v)];
     for (let tries = 0; tries < 60; tries++) {
-      let x, z, tx, tz, state;
-      if (n.kind === 'graph') {
-        const r = n.roads[(Math.random() * n.roads.length) | 0]; if (r.pts.length < 2) continue;
-        const i = (Math.random() * (r.pts.length - 1)) | 0, dir = r.oneway || Math.random() < 0.5 ? 1 : -1;
-        const a = r.pts[i], c = r.pts[i + dir] || r.pts[i - dir]; if (!c) continue;
-        const L = Math.hypot(c[0] - a[0], c[1] - a[1]) || 1; tx = (c[0] - a[0]) / L; tz = (c[1] - a[1]) / L;
-        const off = Math.min(r.w / 4, 2.3); x = a[0] - tz * off; z = a[1] + tx * off; state = { r, i, dir };
-      } else {
-        const k = (Math.random() * n.loop.length) | 0, a = n.loop[k], c = n.loop[(k + 1) % n.loop.length], L = Math.hypot(c.x - a.x, c.z - a.z) || 1;
-        x = a.x; z = a.z; tx = (c.x - a.x) / L; tz = (c.z - a.z) / L; state = { k };
-      }
-      const dp = Math.hypot(x - P.x, z - P.z);
+      const s = this.sample(); if (!s) continue;
+      const dp = Math.hypot(s.x - P.x, s.z - P.z);
       if (dp < (anywhere ? 35 : 150) || dp > (anywhere ? 450 : 420)) continue;
-      if (Math.abs(x) > w.bound - 15 || Math.abs(z) > w.bound - 15) continue;
-      if (others.some(o => Math.hypot(o.pos.x - x, o.pos.z - z) < 12)) continue;
-      const y = w.heightAt(x, z) + b.spec.cgH + 0.1;
-      b.v.reset(x, y, z, -Math.atan2(tz, tx));
+      if (!this.inWin(s)) continue;
+      if (others.some(o => Math.hypot(o.pos.x - s.x, o.pos.z - s.z) < 12)) continue;
+      const y = w.heightAt(s.x, s.z) + b.spec.cgH + 0.1;
+      b.v.reset(s.x, y, s.z, -Math.atan2(s.tz, s.tx));
       b.v.dmgReset(); b.model.repair();
-      b.cur = state; b.pts = []; b.pi = 0; b.raw = []; b.done = undefined; b.dead = false; b.cleared.clear(); b.stuckT = 0; b.flipT = 0; b.waitT = 0;
-      const sp0 = 6; b.v.vel.set(tx * sp0, 0, tz * sp0); for (const h of b.v.wh) h.omega = sp0 / h.w.R;
+      b.cur = s.state; b.pts = []; b.pi = 0; b.raw = []; b.done = undefined; b.dead = false; b.cleared.clear(); b.stuckT = 0; b.flipT = 0; b.waitT = 0; b.offT = 0;
+      const sp0 = 6; b.v.vel.set(s.tx * sp0, 0, s.tz * sp0); for (const h of b.v.wh) h.omega = sp0 / h.w.R;
       this.extend(b, true);
       return true;
     }
@@ -230,18 +297,19 @@ export class Traffic {
 
   // ---------- por quadro ----------
   update(dt, run) {
-    if (!this.bots.length || !this.nav) return;
-    const app = this.app, now = performance.now() / 1000, P = app.veh.pos, blink = Math.floor(now * 3) % 2 === 0;
+    if (!this.nav) return;
+    const app = this.app, now = performance.now() / 1000, blink = Math.floor(now * 3) % 2 === 0;
     if (run) {
+      this.hyT += dt; if (this.hyT > 0.25) { this.hyT = 0; this.hydrate(false); }
       this.acc += dt;
       if (this.acc >= 1 / 30) {
         const d = this.acc; this.acc = 0;
         const others = [app.veh, ...this.bots.map(b => b.v)];
         for (const b of this.bots) {
           this.control(b, d, now, others);
-          const far = Math.hypot(b.v.pos.x - P.x, b.v.pos.z - P.z) > 520;
-          const why = far ? 'far' : b.stuckT > 5 ? 'stuck' : (b.offT || 0) > 4 ? 'off' : b.flipT > 3 ? 'flip' : b.dead ? 'dead' : b.v.speed > 48 ? 'fast' : !isFinite(b.v.pos.x) ? 'nan' : '';
-          if (why) { (this.stats = this.stats || {})[why] = (this.stats[why] || 0) + 1; if (why === 'stuck' || why === 'off') (this.log = this.log || []).push({ why, car: b.spec.car.name, x: +b.v.pos.x.toFixed(0), z: +b.v.pos.z.toFixed(0), road: b.pts[b.pi] && b.pts[b.pi].lim, d: b.pts[b.pi] ? +Math.hypot(b.pts[b.pi].x - b.v.pos.x, b.pts[b.pi].z - b.v.pos.z).toFixed(1) : null, steer: +b.steer.toFixed(2), vt: +(b.vt * 3.6).toFixed(0), obs: this.world.queryStatic(b.v.pos.x, b.v.pos.z, 6, []).length }); this.place(b, false) || this.place(b, true); }
+          const why = b.stuckT > 5 ? 'stuck' : (b.offT || 0) > 4 ? 'off' : b.flipT > 3 ? 'flip' : b.dead ? 'dead' : b.v.speed > 48 ? 'fast' : !isFinite(b.v.pos.x) ? 'nan' : '';
+          if (why) { (this.stats = this.stats || {})[why] = (this.stats[why] || 0) + 1; if (why === 'stuck' || why === 'off') (this.log = this.log || []).push({ why, car: b.spec.car.name, x: +b.v.pos.x.toFixed(0), z: +b.v.pos.z.toFixed(0) }); this.place(b, false) || this.place(b, true); }
+          this.saveRec(b);
         }
       }
     }

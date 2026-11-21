@@ -75,3 +75,9 @@ Perto do velocímetro há um **painel de botões** com as teclas do carro (faró
 
 ## Mapa grande com carregamento contínuo
 No Mundo Real você desenha uma área grande (até 30 km de lado) e escolhe o **📍 ponto de partida**. O jogo só constrói **2 km ao redor do carro** (ruas, prédios, relevo, sinalização) e, conforme você dirige, carrega e troca para a região seguinte automaticamente (as regiões ficam numa grade de 500 m e usam cache, então voltar é rápido). Os bots só existem nessa janela carregada (~1 km ao redor de você).
+
+## Bots persistentes, relevo nivelado e placas
+- **Bots com posição guardada:** cada bot é um registro (carro, cor, posição). Só os que estão a até **1 km** de você viram carros de verdade (física, modelo 3D e colisão, no máximo 28 ao mesmo tempo); os outros ficam parados no lugar, sem custo e sem colisão. Ao trocar de região do mapa os bots são mantidos e voltam quando você se aproxima. O controle vai até 200 bots.
+- **Ruas niveladas:** o terreno é terraplenado sob as ruas — perfil suave, inclinação máxima de ~9 %, cruzamentos na mesma cota, pista plana de borda a borda e talude suave até o terreno natural.
+- **Calçadas:** são interrompidas onde outra via cruza, com meio-fio fechado nas pontas.
+- **Mais de 100 placas diferentes** (limites de velocidade 20–120, proibições, obrigações, advertências, informação, indicação, preferencial). Vêm das tags do OpenStreetMap (traffic_sign, hazard, passagens de nível, hospitais, postos…) e, com "sinalização genérica", são distribuídas pelas vias (curvas, cruzamentos, semáforo à frente, escolas, becos sem saída…).

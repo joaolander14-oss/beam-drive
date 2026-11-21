@@ -4,6 +4,7 @@
 // ônibus, radares, lombadas, placas de nome de rua e árvores. Tudo vem dos dados reais do local.
 import * as THREE from 'three';
 import { Paint, rnd } from './world.js';
+import { catTex, isCatalog, isWide, signFromTags } from './signs.js';
 
 const TREE_ROADS = new Set(['residential', 'tertiary', 'unclassified', 'living_street', 'secondary']);
 const LAMP_ROADS = new Set(['primary', 'secondary', 'tertiary', 'residential', 'unclassified', 'trunk', 'living_street']);
@@ -160,16 +161,32 @@ export function addStreetDetails(w, D, roads, bmask) {
   }
   P.build(w.group);
 
-  // ---- calçadas com meio-fio ----
-  { const pos = [], idx = [], col = [], cT = new THREE.Color(0.62, 0.62, 0.6), cC = new THREE.Color(0.42, 0.42, 0.41), SH = 0.13;
+  // ---- calçadas com meio-fio: interrompidas onde outra via cruza (esquinas limpas) ----
+  { const pos = [], idx = [], col = [], cT = new THREE.Color(0.62, 0.62, 0.6), cC = new THREE.Color(0.42, 0.42, 0.41), SH = 0.13, CL = 20;
+    const sgrid = new Map();
+    for (const q of segs) { const m = q[6] / 2 + 1.2, x0 = Math.floor((Math.min(q[0], q[2]) - m) / CL), x1 = Math.floor((Math.max(q[0], q[2]) + m) / CL), z0 = Math.floor((Math.min(q[1], q[3]) - m) / CL), z1 = Math.floor((Math.max(q[1], q[3]) + m) / CL);
+      for (let i = x0; i <= x1; i++) for (let j = z0; j <= z1; j++) { const k = i * 20011 + j; (sgrid.get(k) || sgrid.set(k, []).get(k)).push(q); } }
+    const blocked = (x, z, self) => { const l = sgrid.get(Math.floor(x / CL) * 20011 + Math.floor(z / CL)); if (!l) return false;
+      for (const q of l) { if (q[8] === self) continue; const dx = x - q[0], dz = z - q[1], t = Math.max(0, Math.min(q[7], dx * q[4] + dz * q[5])), px = q[0] + q[4] * t, pz = q[1] + q[5] * t; if ((x - px) ** 2 + (z - pz) ** 2 < (q[6] / 2 + 0.9) ** 2) return true; } return false; };
+    const emit = (run) => {
+      if (run.length < 2) return; const base = pos.length / 3;
+      for (let i = 0; i < run.length; i++) { const [ax, az, bx, bz] = run[i], ya = H(ax, az), yb = H(bx, bz);
+        pos.push(ax, ya + SH, az, bx, yb + SH, bz, ax, ya + 0.04, az); col.push(cT.r, cT.g, cT.b, cT.r, cT.g, cT.b, cC.r, cC.g, cC.b);
+        if (i < run.length - 1) { const k = base + i * 3; idx.push(k, k + 3, k + 1, k + 1, k + 3, k + 4); idx.push(k + 2, k + 5, k, k, k + 5, k + 3); } }
+      // tampa da ponta (meio-fio fechado onde a calçada termina)
+      for (const [e, flip] of [[0, false], [run.length - 1, true]]) { const k = base + e * 3; if (flip) idx.push(k, k + 1, k + 2); else idx.push(k, k + 2, k + 1); }
+    };
     for (const r of drive) if (hasSidewalk(r)) for (const sg of [-1, 1]) {
-      const a = offsetPts(r.pts, sg * (r.w / 2 + 0.3)), b = offsetPts(r.pts, sg * (r.w / 2 + 2.3)), base = pos.length / 3;
-      for (let i = 0; i < a.length; i++) {
-        const ya = H(a[i][0], a[i][1]), yb = H(b[i][0], b[i][1]);
-        pos.push(a[i][0], ya + SH, a[i][1], b[i][0], yb + SH, b[i][1], a[i][0], ya + 0.04, a[i][1]);
-        col.push(cT.r, cT.g, cT.b, cT.r, cT.g, cT.b, cC.r, cC.g, cC.b);
-        if (i < a.length - 1) { const k = base + i * 3; idx.push(k, k + 3, k + 1, k + 1, k + 3, k + 4); idx.push(k + 2, k + 5, k, k, k + 5, k + 3); }
+      const hw = r.w / 2; let run = [];
+      const dense = [r.pts[0]]; // pontos densos (2 m) com tangente
+      const samples = []; { const first = r.pts[0], nx = r.pts[1]; let L = Math.hypot(nx[0] - first[0], nx[1] - first[1]) || 1; samples.push([first[0], first[1], (nx[0] - first[0]) / L, (nx[1] - first[1]) / L]); }
+      along(r.pts, 2, (x, z, tx, tz) => samples.push([x, z, tx, tz]));
+      { const e = r.pts[r.pts.length - 1], pv = r.pts[r.pts.length - 2], L = Math.hypot(e[0] - pv[0], e[1] - pv[1]) || 1; samples.push([e[0], e[1], (e[0] - pv[0]) / L, (e[1] - pv[1]) / L]); }
+      for (const [x, z, tx, tz] of samples) {
+        const o1 = sg * (hw + 0.3), o2 = sg * (hw + 2.3), ax = x - tz * o1, az = z + tx * o1, bx = x - tz * o2, bz = z + tx * o2;
+        if (blocked(ax, az, r) || blocked(bx, bz, r)) { emit(run); run = []; } else run.push([ax, az, bx, bz]);
       }
+      emit(run);
     }
     if (pos.length) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(pos.length / 3 > 65000 ? new THREE.Uint32BufferAttribute(idx, 1) : new THREE.Uint16BufferAttribute(idx, 1)); g.computeVertexNormals();
       const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.95, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 })); m.receiveShadow = true; m.frustumCulled = false; w.group.add(m); } }
@@ -221,14 +238,19 @@ export function addStreetDetails(w, D, roads, bmask) {
     const bg = new THREE.PlaneGeometry(1.5, 0.56);
     for (const b of boards) { const m = new THREE.Mesh(bg, new THREE.MeshBasicMaterial({ map: boardTex(b.names, '#0b5a34'), side: THREE.DoubleSide })); m.position.set(b.x, b.y, b.z); m.rotation.y = b.ry + Math.PI / 2; w.group.add(m); } }
 
-  // ---- placas reais ----
+  // ---- placas (reais do OSM + genéricas): instanciadas, uma textura por tipo de placa (mais de 100 tipos) ----
   { const poleG = new THREE.CylinderGeometry(0.035, 0.035, 2.4, 6), poleM = new THREE.MeshStandardMaterial({ color: 0x8a8e94, roughness: 0.5, metalness: 0.6 });
-    const cache = {}, planeG = new THREE.PlaneGeometry(0.78, 0.78);
-    const mk = (kind, txt) => cache[kind + txt] || (cache[kind + txt] = new THREE.MeshStandardMaterial({ map: signTex(kind, txt), transparent: true, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.6 }));
+    const sqG = new THREE.PlaneGeometry(0.78, 0.78), wideG = new THREE.PlaneGeometry(1.5, 0.82), groups = new Map(), poleMats = [];
     let count = 0;
-    const put = (x, z, fx, fz, kind, txt, h = 2.15) => { if (count++ > 700) return; const y = H(x, z); const p = new THREE.Mesh(poleG, poleM); p.position.set(x, y + 1.2, z); w.group.add(p); const s = new THREE.Mesh(planeG, mk(kind, txt)); s.position.set(x + fx * 0.06, y + h, z + fz * 0.06); s.rotation.y = Math.atan2(fx, fz); s.castShadow = true; w.group.add(s); };
+    const norm = (kind, txt) => { if (kind === 'speed') return 'v' + txt; if (kind === 'warn') return ({ '🏫': 'school', '🚶': 'pedCross' })[txt] || 'hazard'; return kind; };
+    const put = (x, z, fx, fz, kind, txt = '', h = 2.15) => {
+      if (count++ > 3500) return; let id = norm(kind, txt); if (!isCatalog(id)) id = 'hazard';
+      const y = H(x, z), wide = isWide(id); poleMats.push(mat(x, y + 1.2, z));
+      const key = id + '|' + (wide ? txt : ''); let gr = groups.get(key); if (!gr) groups.set(key, gr = { id, txt: wide ? txt : '', wide, mats: [] });
+      gr.mats.push(mat(x + fx * 0.06, y + (wide ? 2.45 : h), z + fz * 0.06, Math.atan2(fx, fz)));
+    };
     const place = (a, kind, txt, back = 3, hwx = 0.85) => { const hw = a.w / 2 + hwx; put(a.x - a.tx * back - a.tz * hw, a.z - a.tz * back + a.tx * hw, -a.tx, -a.tz, kind, txt); };
-    const speedOf = t => { const m = String(t.maxspeed || t.traffic_sign || '').match(/(\d{2,3})/); const v = m ? +m[1] : 0; return v >= 20 && v <= 120 ? v : 0; };
+    const speedOf = t => { const m = String(t.maxspeed || t.traffic_sign || '').match(/(\d{2,3})/); const v = m ? +m[1] : 0; return v >= 20 && v <= 120 && v % 10 === 0 ? v : 0; };
     for (const n of nodes) {
       const t = n.tags || {}, ts = String(t.traffic_sign || '');
       const apps = approaches(n), rank = Math.max(0, ...apps.map(a => RANK[a.r.type] || 0));
@@ -238,8 +260,6 @@ export function addStreetDetails(w, D, roads, bmask) {
       if (n.k === 'stop' || /stop|R-1\b/i.test(ts)) for (const a of pick) { place(a, 'stop'); stopLine(a); ruleAt(a, 'stop'); }
       else if (n.k === 'give_way' || /give_way|yield|R-2\b/i.test(ts)) for (const a of pick) { place(a, 'yield'); stopLine(a); ruleAt(a, 'yield'); }
       else if (/maxspeed|R-19/i.test(ts) || (t.maxspeed && n.k === 'sign')) { const v = speedOf(t); if (v) for (const a of apps.slice(0, 2)) place(a, 'speed', String(v)); }
-      else if (/no_entry|R-3\b/i.test(ts)) { if (apps[0]) place(apps[0], 'noentry'); }
-      else if (/no_parking|no_stopping|R-6/i.test(ts)) { if (apps[0]) place(apps[0], 'nopark'); }
       else if (n.k === 'bus_stop') {
         const a = apps[0]; if (!a) continue; const hw = a.w / 2 + 2.2, x = a.x - a.tz * hw, z = a.z + a.tx * hw, y = H(x, z); put(x, z, -a.tx, -a.tz, 'bus', '', 2.3);
         if (t.shelter === 'yes' || t.covered === 'yes') { const rf = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.1, 1.5), new THREE.MeshStandardMaterial({ color: 0x2a6fb0, roughness: 0.5 })); rf.position.set(x + a.tx * 1.5, y + 2.5, z + a.tz * 1.5); rf.rotation.y = -Math.atan2(a.tz, a.tx); w.group.add(rf);
@@ -248,13 +268,64 @@ export function addStreetDetails(w, D, roads, bmask) {
         const a = apps[0]; if (!a) continue; const hw = a.w / 2 + 1.2, x = a.x - a.tz * hw, z = a.z + a.tx * hw, y = H(x, z);
         const p = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 4.5, 8), poleM); p.position.set(x, y + 2.25, z); w.group.add(p);
         const bx = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.45, 0.9), new THREE.MeshStandardMaterial({ color: 0x3a3f46, roughness: 0.5, metalness: 0.5 })); bx.position.set(x, y + 4.5, z); bx.rotation.y = Math.atan2(-a.tx, -a.tz); w.group.add(bx);
-      } else if (n.k === 'sign' || /crossing|pedestrian|school|children|warning|A-\d/i.test(ts)) {
-        const a = apps[0]; if (a) place(a, 'warn', /school|children/i.test(ts) ? '🏫' : /crossing|pedestrian/i.test(ts) ? '🚶' : '!');
+      } else {
+        let sid = signFromTags(t);
+        if (!sid && n.k === 'railway') sid = 'railGate';
+        if (!sid && n.k === 'crossing' && /zebra|marked|uncontrolled/i.test(String(t.crossing || t.crossing_ref || ''))) sid = 'crosswalk';
+        if (!sid && n.k === 'amenity') sid = ({ hospital: 'hospital', fuel: 'fuel', parking: 'park', taxi: 'taxi', charging_station: 'charge', police: 'police' })[t.amenity];
+        if (!sid && (n.k === 'sign' || n.k === 'hazard')) sid = 'hazard';
+        const a = apps[0]; if (sid && a) place(a, sid);
       }
     }
     // limites de velocidade das vias (início e a cada ~300 m); sinalização genérica usa o limite padrão do tipo de via
     for (const r of drive) { const ms = r.ms || ((D.opts && D.opts.genericSigns && r.w >= 3.5) ? LIMIT[r.type] : 0); if (!(ms >= 20 && ms <= 120)) continue;
-      let dist = 0, nextAt = 0; for (let i = 0; i < r.pts.length - 1; i++) { const [ax, az] = r.pts[i], [bx, bz] = r.pts[i + 1], L = Math.hypot(bx - ax, bz - az) || 1; if (dist >= nextAt) { place({ x: ax, z: az, tx: (bx - ax) / L, tz: (bz - az) / L, w: r.w }, 'speed', String(ms), -3, 0.9); nextAt = dist + 300; } dist += L; } }
+      const v10 = Math.round(ms / 10) * 10;
+      let dist = 0, nextAt = 0; for (let i = 0; i < r.pts.length - 1; i++) { const [ax, az] = r.pts[i], [bx, bz] = r.pts[i + 1], L = Math.hypot(bx - ax, bz - az) || 1; if (dist >= nextAt) { place({ x: ax, z: az, tx: (bx - ax) / L, tz: (bz - az) / L, w: r.w }, 'speed', String(v10), -3, 0.9); nextAt = dist + 300; } dist += L; } }
+
+    // ---- placas genéricas (opção): advertências de curva/cruzamento/semáforo, regulamentação e indicação por tipo de via ----
+    if (D.opts && D.opts.genericSigns) {
+      const rg = rnd(91);
+      const POOL = {
+        low: ['children', 'school', 'bumps', 'nostop', 'crosswalk', 'cyclists', 'park', 'twoway', 'narrow', 'pedCross', 'nohorn', 'novehicles', 'nobus', 'notruck', 'bikepath', 'camp', 'food', 'hotel', 'phone', 'info'],
+        mid: ['pedCross', 'crosswalk', 'cyclists', 'nostop', 'busonly', 'park', 'hospital', 'fuel', 'taxi', 'noovertake', 'curves', 'uneven', 'roadworks', 'nouturn', 'noleft', 'noright', 'maxheight', 'maxweight', 'police', 'firstaid', 'tram', 'charge', 'nomoto', 'noped', 'notractor', 'noanimals'],
+        high: ['noovertake', 'notruck', 'minspeed', 'priority', 'g_center', 'g_airport', 'g_highway', 'g_exit', 'g_city', 'g_port', 'g_univ', 'g_stadium', 'slippery', 'merge', 'wind', 'fog', 'descent', 'ascent', 'tunnel', 'queue', 'fuel', 'hospital', 'charge', 'highway', 'airportInfo', 'planes', 'rocks', 'gravel', 'ice', 'floods', 'ferry', 'nohazmat', 'endprio', 'cattle', 'deer', 'railNoGate', 'maxwidth', 'chains', 'horn'],
+      };
+      const tier = r => { const k = RANK[r.type] || 0; return k >= 7 ? 'high' : k >= 5 ? 'mid' : 'low'; };
+      const curveSigns = (pts, w0) => {
+        let last = -1e9, dist = 0;
+        for (let i = 1; i < pts.length - 1; i++) {
+          dist += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+          const ix = pts[i][0] - pts[i - 1][0], iz = pts[i][1] - pts[i - 1][1], ox = pts[i + 1][0] - pts[i][0], oz = pts[i + 1][1] - pts[i][1];
+          const ang = Math.atan2(iz * ox - ix * oz, ix * ox + iz * oz);
+          if (Math.abs(ang) < 0.55 || dist - last < 90) continue;
+          // recua ~30 m ao longo da via
+          let rem = 30, k = i, px = pts[i][0], pz = pts[i][1];
+          while (k > 0 && rem > 0) { const L = Math.hypot(px - pts[k - 1][0], pz - pts[k - 1][1]); if (L >= rem) { const t = rem / L; px += (pts[k - 1][0] - px) * t; pz += (pts[k - 1][1] - pz) * t; rem = 0; } else { rem -= L; px = pts[k - 1][0]; pz = pts[k - 1][1]; k--; } }
+          if (rem > 0) continue;
+          const dx = pts[i][0] - px, dz = pts[i][1] - pz, L = Math.hypot(dx, dz) || 1;
+          place({ x: px, z: pz, tx: dx / L, tz: dz / L, w: w0 }, ang > 0 ? 'curveL' : 'curveR', '', 0, 0.9); last = dist;
+        }
+      };
+      for (const r of drive) {
+        if (r.w < 3.2 || r.pts.length < 2) continue;
+        curveSigns(r.pts, r.w); if (!r.oneway) curveSigns(r.pts.slice().reverse(), r.w);
+        const T = POOL[tier(r)], every = tier(r) === 'high' ? 320 : tier(r) === 'mid' ? 240 : 170;
+        along(r.pts, every, (x, z, tx, tz) => { if (rg() < 0.75) place({ x, z, tx, tz, w: r.w }, T[(rg() * T.length) | 0], '', 0, 0.9); });
+        if (r.oneway) { const a = r.pts[0], b = r.pts[1], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; place({ x: a[0], z: a[1], tx: (b[0] - a[0]) / L, tz: (b[1] - a[1]) / L, w: r.w }, 'oneway', '', -2, 0.9); }
+        // beco sem saída: o último ponto não liga a nenhuma outra via
+        if (r.ids && r.ids.length > 2) { const e = r.pts.length - 1, ls = nodeWay.get(r.ids[e]); if (ls && ls.length === 1 && RANK[r.type] <= 3) { const a = r.pts[e - 1], b = r.pts[e], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; place({ x: b[0], z: b[1], tx: (b[0] - a[0]) / L, tz: (b[1] - a[1]) / L, w: r.w }, 'deadend', '', 12, 0.9); } }
+      }
+      // semáforo à frente (45 m antes de cada semáforo) e cruzamento à frente nas vias principais
+      let nsa = 0;
+      for (const n of nodes) {
+        if (n.k === 'traffic_signals') { for (const a of approaches(n)) if (nsa++ < 260) place(a, 'signalsAhead', '', 45, 0.9); }
+        else if (n.generic) { for (const a of approaches(n)) if ((RANK[a.r.type] || 0) >= 5 && nsa++ < 260) place(a, n.k === 'stop' || n.k === 'give_way' ? 'sideroad' : 'cross', '', 40, 0.9); }
+      }
+    }
+    // instâncias
+    inst(w, poleG, poleM, poleMats);
+    for (const gr of groups.values()) inst(w, gr.wide ? wideG : sqG, new THREE.MeshStandardMaterial({ map: catTex(gr.id, gr.txt), transparent: true, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.6 }), gr.mats);
+    w.signKinds = groups.size;
   }
 
   // ---- lombadas reais (traffic_calming) — físicas e pintadas ----

@@ -163,7 +163,7 @@ export class UI {
   renderMaps() {
     const p = $('#p-map'); p.innerHTML = '';
     p.append(el('div', 'hint', 'Mapas pequenos, pensados para testar os veículos.'));
-    { const row = el('div', 'row2'); const lab = el('label', '', '🚗 Tráfego de bots: <b id="botn">' + this.app.opt.bots + '</b>'); const r = el('input'); r.type = 'range'; r.min = 0; r.max = 40; r.value = this.app.opt.bots; r.style.maxWidth = '260px';
+    { const row = el('div', 'row2'); const lab = el('label', '', '🚗 Tráfego de bots: <b id="botn">' + this.app.opt.bots + '</b>'); const r = el('input'); r.type = 'range'; r.min = 0; r.max = 200; r.value = this.app.opt.bots; r.style.maxWidth = '260px';
       r.oninput = () => { $('#botn').textContent = r.value; }; r.onchange = () => this.app.setBots(+r.value);
       row.append(lab, r, el('span', 'hint', 'Os bots dirigem pelas ruas, mantêm a direita, respeitam semáforos, PARE, preferencial e limites de velocidade, e batem de verdade.')); p.append(row); }
     const g = el('div', 'cards');
@@ -188,7 +188,7 @@ export class UI {
     row('Sombras', sel([[1, 'Ligadas'], [0, 'Desligadas (mais FPS)']], o.shadows, v => this.app.setShadows(+v)));
     row('Resolução de renderização', sel([[1, 'Normal'], [1.5, 'Alta'], [0.75, 'Baixa (mais FPS)']], o.pixel, v => this.app.setPixel(+v)));
     row('Velocidade da simulação', sel([[1, 'Normal (1×)'], [0.5, 'Câmera lenta 0,5×'], [0.2, 'Câmera lenta 0,2×'], [0.05, 'Câmera lentíssima']], o.timeScale, v => { o.timeScale = +v; }));
-    { const r = el('input'); r.type = 'range'; r.min = 0; r.max = 40; r.value = o.bots; r.onchange = () => this.app.setBots(+r.value); row('Tráfego de bots (0–40)', r); }
+    { const r = el('input'); r.type = 'range'; r.min = 0; r.max = 200; r.value = o.bots; r.onchange = () => this.app.setBots(+r.value); row('Tráfego de bots (0–200)', r); }
     const tel = el('input'); tel.type = 'checkbox'; tel.checked = o.telemetry; tel.onchange = () => { o.telemetry = tel.checked; }; row('Mostrar telemetria (carga/derrapagem)', tel);
     p.append(grid);
   }

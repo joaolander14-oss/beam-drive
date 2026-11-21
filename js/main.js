@@ -116,7 +116,7 @@ App.loadMap = async function (id) {
   App.setWet(App.opt.wet);
   App.setTime(App.opt.time);
   App.respawn(true);
-  traffic.count = App.opt.bots; traffic.rebuild(w);
+  traffic.count = App.opt.bots; traffic.rebuild(w, false);
   ld.classList.add('hidden');
   console.log('mapa', id, 'em', Math.round(performance.now() - t0), 'ms');
   if (App.ui) App.ui.refreshAll();
@@ -128,15 +128,17 @@ App.swapRealWorld = async function (D2) {
   const old = App.realData, v = App.veh, og = old.geo;
   const ox = (D2.geo.lon0 - og.lon0) * og.mLon, oz = (og.lat0 - D2.geo.lat0) * og.mLat;   // novo centro no referencial antigo
   await nextFrame();
+  traffic.sync();
   const w = buildRealWorld(D2);
   scene.remove(App.world.group); App.world.group.traverse(o => { if (o.geometry) o.geometry.dispose(); });
   App.realData = D2; App.world = w; w.wet = App.opt.wet; scene.add(w.group);
   if (skid) scene.remove(skid.mesh);
   skid = new SkidMarks(scene, w);
   v.world = w; v.pos.x -= ox; v.pos.z -= oz; v.pos.y += old.base - D2.base;
+  traffic.shift(ox, oz);
   App.setWet(App.opt.wet); App.setTime(App.opt.time);
   App.snapCam = true;
-  traffic.rebuild(w);
+  traffic.rebuild(w, true);
 };
 App.openRealPicker = function () { import('./realmap.js').then(m => m.openRealPicker(App)); };
 App.loadRealMap = async function (D) { App.realData = D; App.rm = await import('./realmap.js'); await App.loadMap('real'); if (App.menuOpen) App.closeMenu(); toast(D.hasElev ? 'Mundo Real gerado com relevo' : 'Mundo Real gerado (sem relevo: servidor de elevação indisponível)', 3000); };
@@ -603,10 +605,10 @@ function drawMinimap(u) {
   hx.restore();
   hx.lineWidth = 3 * u; hx.strokeStyle = 'rgba(10,14,24,.9)'; hx.beginPath(); hx.arc(cx, cy, R, 0, 7); hx.stroke();
   hx.lineWidth = 1.5 * u; hx.strokeStyle = '#46567f'; hx.beginPath(); hx.arc(cx, cy, R - 1.5 * u, 0, 7); hx.stroke();
-  for (const bt of traffic.bots) {
-    const ddx = (bt.v.pos.x - v.pos.x) * App.miniZoom, ddz = (bt.v.pos.z - v.pos.z) * App.miniZoom, rx = ddx * Math.cos(rot) - ddz * Math.sin(rot), ry = ddx * Math.sin(rot) + ddz * Math.cos(rot);
+  for (const bt of traffic.recs) {
+    const ddx = (bt.x - v.pos.x) * App.miniZoom, ddz = (bt.z - v.pos.z) * App.miniZoom, rx = ddx * Math.cos(rot) - ddz * Math.sin(rot), ry = ddx * Math.sin(rot) + ddz * Math.cos(rot);
     if (Math.hypot(rx, ry) > R - 5 * u) continue;
-    hx.fillStyle = '#4aa8ff'; hx.strokeStyle = '#0b1320'; hx.lineWidth = 1 * u; hx.beginPath(); hx.arc(cx + rx, cy + ry, 3.6 * u, 0, 7); hx.fill(); hx.stroke();
+    hx.fillStyle = bt.live ? "#4aa8ff" : "#5a7390"; hx.strokeStyle = '#0b1320'; hx.lineWidth = 1 * u; hx.beginPath(); hx.arc(cx + rx, cy + ry, 3.6 * u, 0, 7); hx.fill(); hx.stroke();
   }
   // carro
   hx.save(); hx.translate(cx, cy); hx.rotate(App.miniNorth ? Math.PI / 2 - yaw : 0);
