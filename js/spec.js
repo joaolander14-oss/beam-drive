@@ -208,6 +208,7 @@ export function buildSpec(cfg) {
     car, cfg, eng: engine, gearInfo: gear, driveline, wheels, mass: M, a, distF, cgH, I,
     cdA, cdAside: cdA * 2.6, clF, clR, WB, L: Lm, W, H: car.H,
     hull, boxLow, boxCab, noseX, meshOff, driverEye,
+    tank: isEV ? (eng.battery || 200) * 0.17 : clamp(35 + M / 40, 35, 120), diesel: eng.kind === 'diesel',
     steerMax: car.steer * fx.steer, coolMult: fx.cool, nitroS: fx.nitroS, fx, ack: cfg.ack, rcH: 0.07,
     abs: cfg.abs, tc: cfg.tc, esc: cfg.esc, steerAssist: cfg.steerAssist, trans: cfg.trans,
     isEV, tdF, tdR, clearance: clearance + rhm,

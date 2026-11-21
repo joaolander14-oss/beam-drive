@@ -49,3 +49,9 @@ O jogo baixa ruas, todos os prédios e casas (com altura e janelas; só os ~1.60
 Tudo gratuito, sem chave: mapa Leaflet/OpenStreetMap, dados via Overpass API e elevação AWS Terrain.
 Os servidores públicos às vezes ficam sobrecarregados — o jogo tenta 4 servidores em paralelo; se falhar, espere alguns minutos ou reduza a área.
 Dados © contribuidores do OpenStreetMap (ODbL).
+
+## Painel e controles do carro
+Setas (J/K), pisca-alerta (X), faróis lanterna/baixo/alto (L), neblina (B), limpador de para-brisa (O), ignição (I), piloto automático (Y), buzina (H).
+O painel inferior tem as luzes de alerta: motor, temperatura, óleo, bateria, combustível, freio de mão, ABS/TC/ESC, pneus, faróis e setas piscando.
+Combustível/bateria acabam de verdade (Delete abastece). Minimapa em todos os mapas (-/= zoom, U orientação).
+No Mundo Real: faixas de pedestre, semáforos com fases, placas de PARE/preferência/velocidade, postes, calçadas e árvores (só visuais, sem colisão).

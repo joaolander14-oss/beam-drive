@@ -438,6 +438,18 @@ export class CarModel {
       const t = bx(0.05, 0.085, sp.boxy ? 0.14 : 0.36, tail); place(t, xt2, yt2, sg * zt, sg * 0.22); this.addDet(t, body);
       const r2 = bx(0.04, 0.04, 0.1, rev); place(r2, xt2 + 0.005, yt2 - 0.08, sg * zt * 0.72); this.addDet(r2, body);
     }
+    // setas (esquerda = +z no modelo) e limpadores de para-brisa
+    this.sigMat = [0, 1].map(() => new THREE.MeshStandardMaterial({ color: 0x5a3a00, roughness: 0.3, emissive: 0xff9a10, emissiveIntensity: 0 }));
+    for (const sg of [-1, 1]) {
+      const m = this.sigMat[sg > 0 ? 0 : 1], xf = 0.10, zf = halfW(xf) * 0.86, yf = lowerTop(xf) - 0.20;
+      const f = bx(0.05, 0.05, 0.14, m); place(f, xf - 0.005, yf, sg * zf, sg * -0.3); this.addDet(f, body);
+      const xr = L - 0.07, zr = halfW(xr) * 0.84, yr = (sp.bed ? sp.bed[1] - 0.1 : lowerTop(xr) - 0.15) + 0.10;
+      const r = bx(0.04, 0.05, 0.14, m); place(r, xr + 0.005, yr, sg * zr, sg * 0.3); this.addDet(r, body);
+    }
+    this.wipers = [];
+    { const th = Math.atan2(H - sp.belt[0], pf.xrf - pf.xc);
+      for (const zz of [-0.28, 0.22]) { const piv = new THREE.Group(); piv.position.set(pf.xc + 0.07, lowerTop(pf.xc + 0.07) + 0.012, zz); piv.rotation.z = th * 0.92;
+        const sw = new THREE.Group(), arm = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.008, 0.016), black); arm.position.x = 0.23; sw.add(arm); piv.add(sw); body.add(piv); this.wipers.push(sw); sw.rotation.y = -1.45; } }
     // grade dianteira
     if (!sp.beetle) { const g = bx(0.05, sp.boxy ? 0.36 : 0.095, W * (sp.boxy ? 0.36 : 0.40), black); place(g, 0.025 + (sp.boxy ? 0.0 : 0.03), lowerTop(0.04) - (sp.boxy ? 0.22 : 0.15), 0); this.addDet(g, body);
       if (sp.boxy) for (let i = -3; i <= 3; i++) { const sl = bx(0.04, 0.34, 0.012, chrome); place(sl, 0.008, lowerTop(0.04) - 0.22, i * 0.065); this.addDet(sl, body); } }
@@ -656,15 +668,23 @@ export class CarModel {
       const sl = new THREE.SpotLight(0xfff2dc, 0, 130, 0.50, 0.6, 1.1);
       sl.position.set(spec.noseX - 0.3, spec.meshOff.y + car.shape.nt - 0.15, sg * car.W * 0.28);
       sl.target.position.set(spec.noseX + 20, spec.meshOff.y + 0.2, sg * car.W * 0.2);
-      if (this._beamCol) sl.color.set(this._beamCol); this.root.add(sl); this.root.add(sl.target); this.beams.push(sl);
+      if (this._beamCol) sl.color.set(this._beamCol);       this.root.add(sl); this.root.add(sl.target); this.beams.push(sl);
+    }
+    this.fogBeams = [];
+    for (const sg of [-1, 1]) {
+      const fl = new THREE.SpotLight(0xffe27a, 0, 55, 0.85, 0.7, 1.3);
+      fl.position.set(spec.noseX - 0.1, spec.meshOff.y + 0.32, sg * car.W * 0.3);
+      fl.target.position.set(spec.noseX + 9, spec.meshOff.y, sg * car.W * 0.3);
+      this.root.add(fl); this.root.add(fl.target); this.fogBeams.push(fl);
     }
   }
 
-  setLights(on, brake, reverse) {
-    this.lensMat.emissiveIntensity = on ? 2.2 : 0.0;
-    this.tailMat.emissiveIntensity = brake ? 4.0 : (on ? 1.2 : 0.2);
+  setLights(on, brake, reverse, mode = on ? 2 : 0, fog = false) {
+    this.lensMat.emissiveIntensity = [0, 0.7, 2.2, 3.4][mode];
+    this.tailMat.emissiveIntensity = brake ? 4.0 : (mode >= 1 ? 1.2 : 0.2);
     this.revMat.emissiveIntensity = reverse ? 2.5 : 0;
-    for (const b of this.beams) b.intensity = on ? 2600 : 0;
+    for (const b of this.beams) { b.intensity = mode === 2 ? 2600 : mode === 3 ? 6500 : 0; b.angle = mode === 3 ? 0.34 : 0.5; b.distance = mode === 3 ? 230 : 130; }
+    if (this.fogBeams) for (const b of this.fogBeams) b.intensity = fog ? 1100 : 0;
   }
 
   setPaint(hex) {
@@ -715,7 +735,16 @@ export class CarModel {
     }
     if (this.glow) { const t = performance.now() / 1000; if (this.glow === 'rainbow') { this.glowLight.color.setHSL((t * 0.25) % 1, 1, 0.5); this.glowMesh.material.color.copy(this.glowLight.color); } else if (this.glow === 'pulse') { this.glowLight.intensity = 6 + 10 * (0.5 + 0.5 * Math.sin(t * 5)); this.glowMesh.material.opacity = 0.15 + 0.3 * (0.5 + 0.5 * Math.sin(t * 5)); } }
     if (this.swSpin) this.swSpin.rotation.x = -v.steerAng * 5.5 * (v.in.steer === 0 ? 1 : 1);
-    if (extras) this.setLights(extras.lights, extras.brake, extras.reverse);
+    if (extras) {
+      this.setLights(extras.lights, extras.brake, extras.reverse, extras.mode, extras.fog);
+      const bl = extras.blink;
+      if (this.sigMat) { this.sigMat[0].emissiveIntensity = ((extras.sigL || extras.haz) && bl) ? 4 : 0; this.sigMat[1].emissiveIntensity = ((extras.sigR || extras.haz) && bl) ? 4 : 0; }
+      if (this.wipers && this.wipers.length) {
+        if (extras.wipers) { this.wipeT = (this.wipeT || 0) + dt * (extras.wipers === 2 ? 7 : 3.6); this.wipeS = 0.5 - 0.5 * Math.cos(this.wipeT); }
+        else { this.wipeS = (this.wipeS || 0) * Math.max(0, 1 - dt * 6); }
+        for (const w of this.wipers) w.rotation.y = -1.45 + this.wipeS * 1.15;
+      }
+    }
   }
 
   dispose() {

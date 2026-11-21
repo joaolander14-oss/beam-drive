@@ -36,6 +36,16 @@ export class CarAudio {
     this.rn.connect(this.rf).connect(this.rg).connect(this.master);
   }
   setProfile(i) { this.prof = i; }
+  tick(hi) {
+    if (!this.ctx || !this.on) return;
+    const c = this.ctx, t = c.currentTime, o = c.createOscillator(), g = c.createGain(); o.type = 'square'; o.frequency.value = hi ? 1700 : 1300;
+    g.gain.setValueAtTime(0.05, t); g.gain.exponentialRampToValueAtTime(0.0005, t + 0.035); o.connect(g).connect(this.master); o.start(t); o.stop(t + 0.04);
+  }
+  chime() {
+    if (!this.ctx || !this.on) return;
+    const c = this.ctx, t = c.currentTime;
+    for (const [f, d] of [[880, 0], [660, 0.16]]) { const o = c.createOscillator(), g = c.createGain(); o.type = 'sine'; o.frequency.value = f; g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.1, t + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0005, t + d + 0.3); o.connect(g).connect(this.master); o.start(t + d); o.stop(t + d + 0.35); }
+  }
   horn(type, on) {
     if (!this.ctx) return;
     const c = this.ctx;

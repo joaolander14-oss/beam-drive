@@ -76,6 +76,7 @@ export class Vehicle {
       absF: 1, absAct: false, brkMax: 0, brkMode: 0, brkSgn: 1, camber: 0, comp: 0, tireDmg: 0, load: 0,
     }));
     this.E = spec.eng;
+    { const frac = this.tank ? this.fuel / this.tank : 1; this.tank = spec.tank; this.fuel = this.tank * frac; if (this.engineOn === undefined) { this.engineOn = true; this.cruise = 0; this.cruiseI = 0; } }
     this.we = this.E.idle * Math.PI / 30;
     this.fill = 0;
     this.gear = 1; this.pendingGear = null; this.shiftT = 0; this.shiftTotal = 0; this.sinceShift = 1;
@@ -93,6 +94,7 @@ export class Vehicle {
     this.updateAxes();
   }
 
+  refuel() { this.fuel = this.tank; }
   dmgReset() { this.dmg = { engine: 0, rad: 0, body: 0, wheel: [0, 0, 0, 0] }; this.temp = 60; }
 
   reset(x, y, z, yaw) {
@@ -175,6 +177,10 @@ export class Vehicle {
     } else if (this.gear === -1) {
       // manual: pedal freio fica freio
     }
+    if (this.cruise > 0) {
+      if (brk > 0.05 || inp.hand > 0.2 || this.gear <= 0 || fs < 3) this.cruise = 0;
+      else { const e = this.cruise - fs; this.cruiseI = clamp(this.cruiseI + e * dt * 0.06, -0.3, 0.6); thr = Math.max(thr, clamp(0.18 + e * 0.25 + this.cruiseI, 0, 1)); }
+    } else this.cruiseI = 0;
     this.pedalThr = thr; this.pedalBrk = brk;
     // direção: velocidade limita ângulo
     const v = Math.abs(fs);
@@ -303,7 +309,10 @@ export class Vehicle {
     }
     // ESC: reduz acelerador em subviragem/sobreviragem forte
     if (this.escCut > 0) { thr *= 1 - this.escCut; }
-    if (E.kind !== 'ev') {
+    const running = this.engineOn && this.fuel > 0;
+    this.running = running;
+    if (!running) thr = 0;
+    if (E.kind !== 'ev' && running) {
       const idleThr = 0.07 + clamp((E.idle - rpm) / 200, 0, 0.6);
       thr = Math.max(thr, idleThr);
     }
@@ -333,8 +342,15 @@ export class Vehicle {
       const fr = E.fric * E.peakTq * (0.6 + rpm / E.red) * (E.kind === 'diesel' ? 1.35 : 1);
       Te = Twot * thr - fr * (1 - thr);
     }
+    if (!running && E.kind === 'ev') Te = 0;
     this.Te = Te; this.Twot = Twot;
     this.powerKw = Math.max(0, Te * this.we / 1000);
+    // consumo de combustível / bateria
+    if (running) {
+      const Pk = Te * this.we / 1000;
+      if (E.kind === 'ev') { this.fuel = Math.min(this.tank, Math.max(0, this.fuel - (Pk > 0 ? Pk : Pk * 0.6) * dt / 3600)); }
+      else { const eq = Pk > 0 ? Pk + 1.2 : (rpm > 1400 ? 0.15 : 0.6); const gps = eq * (E.kind === 'diesel' ? 210 : 260) / 3600; this.fuel = Math.max(0, this.fuel - gps / (E.kind === 'diesel' ? 830 : 745) * dt); }
+    }
   }
 
   // ---------- suspensão e contato com o solo ----------

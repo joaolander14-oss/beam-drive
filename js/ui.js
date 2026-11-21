@@ -197,7 +197,9 @@ export class UI {
       <p><kbd>C</kbd> muda a câmera (perseguição, capô, cockpit, para-choque, órbita, aérea) · <kbd>V</kbd> olhar para trás</p>
       <p>Mouse: arraste para girar a câmera · roda para aproximar</p>
       <p><kbd>R</kbd> desvira o carro · <kbd>Backspace</kbd> volta ao início e conserta · <kbd>Delete</kbd> conserta a lataria</p>
-      <p><kbd>L</kbd> faróis · <kbd>F</kbd> telemetria · <kbd>P</kbd> pausa · <kbd>[</kbd> <kbd>]</kbd> câmera lenta</p>
+      <p><b>Painel do carro:</b> <kbd>L</kbd> faróis (apagado → lanterna → baixo → alto) · <kbd>B</kbd> neblina · <kbd>J</kbd> seta esquerda · <kbd>K</kbd> seta direita · <kbd>X</kbd> pisca-alerta · <kbd>O</kbd> limpador (lento/rápido) · <kbd>I</kbd> liga/desliga o motor · <kbd>Y</kbd> piloto automático · <kbd>H</kbd> buzina</p>
+      <p><b>Minimapa:</b> <kbd>-</kbd> <kbd>=</kbd> zoom · <kbd>U</kbd> norte fixo / gira com o carro. As luzes de alerta do painel (motor, temperatura, óleo, bateria, combustível, freio, ABS/TC/ESC, pneus) acendem sozinhas.</p>
+      <p><kbd>F</kbd> telemetria · <kbd>P</kbd> pausa · <kbd>[</kbd> <kbd>]</kbd> câmera lenta · <kbd>Delete</kbd> conserta e abastece</p>
       <p><kbd>G</kbd> garagem · <kbd>M</kbd> mapas · <kbd>Esc</kbd> menu · <kbd>F1</kbd> controles</p>
       <p>Controle (gamepad): analógico esquerdo direção · RT/LT acelera/freia · A freio de mão · LB/RB marchas · Y câmera · X reset</p>
       <p><b>Dica:</b> a deformação é real: bata em muros, rampas e rochas — o dano aparece na lataria, no motor, no radiador e nas rodas. O painel mostra a % de dano.</p>

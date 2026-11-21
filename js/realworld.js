@@ -6,6 +6,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SURF, clamp } from './data.js';
 import { World, Paint, makeTex, rnd } from './world.js';
 import { terrainColor, pineSet } from './maps.js';
+import { addStreetDetails, offsetPts, hasSidewalk } from './streetdecor.js';
 
 const DRIVE = { motorway: 7, motorway_link: 5, trunk: 7, trunk_link: 5, primary: 5.5, primary_link: 4, secondary: 5, secondary_link: 4, tertiary: 4.5, tertiary_link: 3.5, residential: 3.8, unclassified: 3.8, living_street: 3.2, service: 2.6, road: 3.5 };
 const OFFROAD = { track: 2.4, path: 1.0, cycleway: 1.3, footway: 1.0, pedestrian: 3.0, steps: 1.0 };
@@ -45,6 +46,8 @@ export function buildRealWorld(D) {
   for (const g of D.greens) fillPoly(g.pts, g.kind === 'sand' ? 4 : 3);
   for (const wt of D.waters) { if (wt.poly) fillPoly(wt.pts, 9); else stamp(wt.pts, wt.w / 2, 9); }
   for (const b of D.buildings) fillPoly(b.pts, 1);
+  const bmask = new Uint8Array(S.length); for (let i = 0; i < S.length; i++) bmask[i] = S[i] === 1 ? 1 : 0;
+  for (const r of D.roads) if (hasSidewalk(r)) for (const sg of [-1, 1]) stamp(offsetPts(r.pts, sg * (r.w / 2 + 1.3)), 1.0, 1);
   const roads = D.roads.filter(r => r.pts.length > 1);
   for (const r of roads) stamp(r.pts, r.w / 2, r.off ? (r.type === 'track' ? 2 : 5) : (r.type === 'pedestrian' ? 1 : 0));
 
@@ -80,10 +83,7 @@ export function buildRealWorld(D) {
     const mat = new THREE.MeshStandardMaterial({ map: t, vertexColors: true, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     const m = new THREE.Mesh(g, mat); m.receiveShadow = true; m.frustumCulled = false; w.group.add(m); w.roadMat = mat;
   }
-  // faixas centrais nas vias principais
-  const P = new Paint(w);
-  for (const r of roads) if (!r.off && r.w >= 5) for (let i = 0; i < r.pts.length - 1; i++) { const [ax, az] = r.pts[i], [bx, bz] = r.pts[i + 1]; if (Math.hypot(bx - ax, bz - az) > 2) P.dashed('#f2d24a', ax, az, bx, bz, 0.16, 3, 5, 0.06); }
-  P.build(w.group);
+  addStreetDetails(w, D, roads, bmask);
 
   // prédios (malha única por lotes + colisões em caixas orientadas)
   const R = rnd(11), pal = [0xd8d0c4, 0xc8c0b4, 0xb8b4ac, 0xe0d8cc, 0xa8a8a8, 0xc4b8a4, 0xb0a090, 0xd0d4d8];

@@ -22,7 +22,7 @@ const App = {
   cfg: null, spec: null, mapId: 'campo', world: null, veh: null, model: null,
   opt: { time: 'dia', wet: 0, volume: 0.6, units: 'kmh', shadows: 1, pixel: 1, timeScale: 1, telemetry: false },
   menuOpen: true, paused: false, camMode: 0, camYaw: 0, camPitch: 0.0, camDist: 1, orbitYaw: 0, orbitPitch: 0.16, lookBack: false,
-  keys: {}, steerRaw: 0, steerSm: 0, lights: false, acc: 0, simTime: 0,
+  keys: {}, steerRaw: 0, steerSm: 0, lights: false, lightMode: 0, fog: false, sigL: false, sigR: false, haz: false, wipers: 0, bulb: 0, miniZoom: 0.35, miniNorth: false, acc: 0, simTime: 0,
   meas: { t100: null, brake: null, top: 0, latG: 0, run: null, dist: 0 }, lap: null,
 };
 window.BD = App;
@@ -74,7 +74,7 @@ App.setTime = id => {
   if (App.envTex) App.envTex.dispose();
   App.envTex = pmrem.fromScene(skyScene, 0.02).texture; scene.environment = App.envTex;
   scene.environmentIntensity = T.night ? 0.25 : id === 'tarde' ? 0.7 : 1.0;
-  App.lights = !!T.night;
+  App.lights = !!T.night; App.lightMode = T.night ? 2 : 0;
   App.night = T.night;
 };
 App.setWet = w => {
@@ -121,15 +121,23 @@ App.loadMap = async function (id) {
 
 App.openRealPicker = function () { import('./realmap.js').then(m => m.openRealPicker(App)); };
 App.loadRealMap = async function (D) { App.realData = D; await App.loadMap('real'); if (App.menuOpen) App.closeMenu(); toast(D.hasElev ? 'Mundo Real gerado com relevo' : 'Mundo Real gerado (sem relevo: servidor de elevação indisponível)', 3000); };
+App.toggleIgnition = function () {
+  const v = App.veh;
+  if (v.engineOn) { v.engineOn = false; v.cruise = 0; toast('Motor desligado'); return; }
+  if (v.fuel <= 0) { toast(v.spec.isEV ? 'Bateria descarregada!' : 'Sem combustível!'); audio.chime(); return; }
+  v.engineOn = true; App.bulb = 1.4; v.we = Math.max(v.we, (v.E.idle || 0) * Math.PI / 30 * 0.9);
+  toast(v.spec.isEV ? 'Sistema pronto (READY)' : 'Motor ligado'); audio.chime();
+};
 App.respawn = function (full) {
   const w = App.world, s = w.spawn, v = App.veh;
   const h = w.heightAt(s.x, s.z);
   v.reset(s.x, h + App.spec.cgH + 0.02, s.z, s.yaw);
   v.vel.set(0, 0, 0);
-  if (full) { v.dmgReset(); App.model && App.model.repair(); w.resetProps(); skid && skid.clear(); v.nitroLeft = 12; }
+  v.engineOn = true; v.cruise = 0;
+  if (full) { v.refuel(); v.dmgReset(); App.model && App.model.repair(); w.resetProps(); skid && skid.clear(); v.nitroLeft = 12; }
   v.in.thr = v.in.brk = 0;
   App.camYaw = null;
-  App.model && App.model.update(v, 0, { lights: App.lights, brake: false, reverse: false });
+  App.model && App.model.update(v, 0, { lights: App.lightMode > 0, mode: App.lightMode, brake: false, reverse: false });
 };
 
 // ---------------- carro / configuração ----------------
@@ -155,7 +163,7 @@ App.rebuildCar = function (keepPose = true, quick = false) {
   } else if (App.world) App.respawn(true);
   v.nitroLeft = 12 + (spec.nitroS || 0);
   audio.setProfile((cfg.parts && cfg.parts.esound) | 0);
-  App.model.update(v, 0, { lights: App.lights, brake: false, reverse: false });
+  App.model.update(v, 0, { lights: App.lightMode > 0, mode: App.lightMode, brake: false, reverse: false });
   if (App.ui) { App.ui.updateStats && App.ui.tab === 'garage' && App.ui.updateStats(); }
   App.camYaw = null;
 };
@@ -208,12 +216,22 @@ addEventListener('keydown', e => {
     case 'F1': e.preventDefault(); App.openMenu('help'); break;
     case 'KeyC': App.camMode = (App.camMode + 1) % CAMS.length; App.camYaw = null; toast('Câmera: ' + CAMS[App.camMode]); break;
     case 'KeyV': App.lookBack = true; break;
-    case 'KeyL': App.lights = !App.lights; toast(App.lights ? 'Faróis ligados' : 'Faróis desligados'); break;
+    case 'KeyL': App.lightMode = (App.lightMode + 1) % 4; toast(['Faróis apagados', 'Lanternas (posição)', 'Farol baixo', 'Farol alto'][App.lightMode]); break;
+    case 'KeyB': App.fog = !App.fog; toast(App.fog ? 'Farol de neblina ligado' : 'Farol de neblina desligado'); break;
+    case 'KeyJ': App.sigL = !App.sigL; App.sigR = false; App.haz = false; App.sigPeak = 0; toast(App.sigL ? 'Seta esquerda' : 'Seta desligada'); break;
+    case 'KeyK': App.sigR = !App.sigR; App.sigL = false; App.haz = false; App.sigPeak = 0; toast(App.sigR ? 'Seta direita' : 'Seta desligada'); break;
+    case 'KeyX': App.haz = !App.haz; if (App.haz) { App.sigL = App.sigR = false; } toast(App.haz ? 'Pisca-alerta ligado' : 'Pisca-alerta desligado'); break;
+    case 'KeyO': App.wipers = (App.wipers + 1) % 3; toast(['Limpador desligado', 'Limpador lento', 'Limpador rápido'][App.wipers]); break;
+    case 'KeyI': App.toggleIgnition(); break;
+    case 'KeyY': if (v.cruise > 0) { v.cruise = 0; toast('Piloto automático desligado'); } else if (v.fwdSpeed > 5 && v.gear > 0) { v.cruise = v.fwdSpeed; toast('Piloto automático: ' + Math.round(v.fwdSpeed * 3.6) + ' km/h'); } else toast('Piloto automático precisa de 20+ km/h em marcha'); break;
+    case 'KeyU': App.miniNorth = !App.miniNorth; toast(App.miniNorth ? 'Minimapa: norte para cima' : 'Minimapa: gira com o carro'); break;
+    case 'Minus': case 'NumpadSubtract': App.miniZoom = clamp(App.miniZoom / 1.3, 0.05, 2); break;
+    case 'Equal': case 'NumpadAdd': App.miniZoom = clamp(App.miniZoom * 1.3, 0.05, 2); break;
     case 'KeyF': App.opt.telemetry = !App.opt.telemetry; break;
     case 'KeyP': App.paused = !App.paused; toast(App.paused ? 'Pausado' : 'Retomado'); break;
     case 'KeyR': if (!App.menuOpen) { v.rightSelf(); toast('Carro desvirado'); } break;
     case 'Backspace': if (!App.menuOpen) { e.preventDefault(); App.respawn(true); toast('Início — carro consertado'); } break;
-    case 'Delete': if (!App.menuOpen) { v.dmgReset(); App.model.repair(); toast('Lataria consertada'); } break;
+    case 'Delete': if (!App.menuOpen) { v.dmgReset(); App.model.repair(); v.refuel(); toast('Lataria consertada e tanque cheio'); } break;
     case 'KeyE': v.in.up = true; break;
     case 'KeyQ': v.in.down = true; break;
     case 'KeyT': App.cfg.trans = App.cfg.trans === 'auto' ? 'manual' : 'auto'; v.trans = App.cfg.trans; v.spec.trans = v.trans; toast('Câmbio: ' + (v.trans === 'auto' ? 'automático' : 'manual (E/Q)')); break;
@@ -265,6 +283,7 @@ function updateInputs(dt) {
     else App.steerSm += clamp(target - App.steerSm, -rate * dt, rate * dt);
   }
   v.in.thr = thr; v.in.brk = brk; v.in.hand = hand; v.in.steer = clamp(App.steerSm, -1, 1);
+  if (App.sigL || App.sigR) { const a = Math.abs(v.in.steer); if (a > 0.3) App.sigPeak = 1; else if (a < 0.08 && App.sigPeak) { App.sigL = App.sigR = false; App.sigPeak = 0; } }
 }
 
 // ---------------- câmeras ----------------
@@ -446,18 +465,54 @@ function drawHud() {
   // turbo arc
   if (E.bar > 0) { hx.lineWidth = 6 * u; hx.strokeStyle = '#1c2a44'; hx.beginPath(); hx.arc(0, 0, R * 1.07, Math.PI * 0.55, Math.PI * 0.97); hx.stroke(); hx.strokeStyle = '#34b4ff'; hx.beginPath(); hx.arc(0, 0, R * 1.07, Math.PI * 0.55, Math.PI * (0.55 + 0.42 * v.fill)); hx.stroke(); hx.fillStyle = '#7fd0ff'; hx.font = `${11 * u}px Segoe UI`; hx.fillText((E.bar * E.boostScale * v.fill).toFixed(2) + ' bar', -R * 1.18, R * 0.58); }
   hx.restore();
-  // ---- indicadores ----
-  const pill = (x, y, txt, on, col) => { hx.font = `bold ${13 * u}px Segoe UI`; const w = hx.measureText(txt).width + 14 * u; hx.fillStyle = on ? col : 'rgba(20,28,44,.8)'; hx.beginPath(); hx.roundRect(x, y, w, 22 * u, 5 * u); hx.fill(); hx.fillStyle = on ? '#000' : '#4f6188'; hx.textAlign = 'left'; hx.textBaseline = 'middle'; hx.fillText(txt, x + 7 * u, y + 11.5 * u); return w + 6 * u; };
-  let px = cx - R, py = cy + R + 8 * u;
-  px += pill(px, py, 'ABS', v.absAct, '#ffd23a'); px += pill(px, py, 'TC', v.tcAct, '#ffd23a'); px += pill(px, py, 'ESC', v.escAct, '#ffb03a');
-  if (App.spec.cfg.nitro) px += pill(px, py, 'N₂O ' + Math.max(0, v.nitroLeft).toFixed(0) + 's', v.nitroOn, '#58e0ff');
-  px += pill(px, py, '💡', App.lights, '#fff3b0');
+  // ---- painel de alertas (luzes do painel de instrumentos) ----
+  {
+    const t = 34 * u, gap = 6 * u, blink = Math.floor(performance.now() / 330) % 2 === 0, bulb = App.bulb > 0;
+    const ev = E.kind === 'ev', fuelF = v.fuel / v.tank, anyWheel = v.dmg.wheel.some(d => d > 0.3);
+    const tiles = [
+      { arrow: -1, on: (App.sigL || App.haz) && blink, col: '#3cff6a' },
+      { s: '⚙', lab: 'MOTOR', on: v.dmg.engine > 0.25 || (v.cutT > 0 && v.pedalThr > 0.8), col: v.dmg.engine > 0.6 ? '#ff3a30' : '#ffb020' },
+      { s: '🌡', lab: 'TEMP', on: v.temp > 108, col: '#ff3a30' },
+      { s: '🛢', lab: 'ÓLEO', on: v.dmg.engine > 0.55, col: '#ff3a30' },
+      { s: '🔋', lab: 'BATERIA', on: !v.engineOn, col: '#ff3a30' },
+      { s: ev ? '⚡' : '⛽', lab: ev ? 'CARGA' : 'COMB.', on: fuelF < 0.12, col: '#ffb020' },
+      { s: '(!)', lab: 'FREIO', on: v.in.hand > 0.05 || v.dmg.body > 0.8, col: '#ff3a30' },
+      { s: 'ABS', on: v.absAct ? blink : !v.spec.abs, col: '#ffb020', off: !v.spec.abs },
+      { s: 'TC', on: v.tcAct ? blink : !v.spec.tc, col: '#ffb020', off: !v.spec.tc },
+      { s: 'ESC', on: v.escAct ? blink : !v.spec.esc, col: '#ffb020', off: !v.spec.esc },
+      { s: '◎!', lab: 'PNEUS', on: anyWheel, col: '#ffb020' },
+      { s: '≣D', lab: 'ALTO', on: App.lightMode === 3, col: '#4aa8ff' },
+      { s: '≡D', lab: 'BAIXO', on: App.lightMode === 2, col: '#3cff6a' },
+      { s: 'D≡', lab: 'NEBL.', on: App.fog, col: '#ffd23a' },
+      { s: v.cruise > 0 ? String(Math.round(v.cruise * (mph ? 2.237 : 3.6))) : '⏱', lab: 'PILOTO', on: v.cruise > 0, col: '#3cff6a' },
+      { arrow: 1, on: (App.sigR || App.haz) && blink, col: '#3cff6a' },
+    ];
+    if (App.spec.cfg.nitro) tiles.splice(14, 0, { s: 'N₂O', lab: Math.max(0, v.nitroLeft).toFixed(0) + 's', on: v.nitroOn, col: '#58e0ff' });
+    const total = tiles.length * (t + gap) - gap, x0 = W / 2 - total / 2, y0 = H - t - 22 * u;
+    const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
+    tiles.forEach((tl, i) => {
+      const x = x0 + i * (t + gap), lit = tl.on || bulb;
+      hx.fillStyle = lit ? rgba(tl.col, 0.2) : 'rgba(12,18,30,.62)'; hx.beginPath(); hx.roundRect(x, y0, t, t, 6 * u); hx.fill();
+      hx.strokeStyle = lit ? tl.col : '#222d45'; hx.lineWidth = 1.5 * u; hx.stroke();
+      hx.textAlign = 'center'; hx.textBaseline = 'middle';
+      if (tl.arrow) { hx.fillStyle = lit ? tl.col : '#1f2a42'; hx.beginPath(); const cxx = x + t / 2, cyy = y0 + t / 2, d = tl.arrow; hx.moveTo(cxx + d * 11 * u, cyy); hx.lineTo(cxx - d * 7 * u, cyy - 11 * u); hx.lineTo(cxx - d * 7 * u, cyy + 11 * u); hx.closePath(); hx.fill(); }
+      else {
+        hx.fillStyle = lit ? tl.col : '#2a3652'; hx.font = `bold ${(tl.s.length > 2 ? 12 : 18) * u}px Segoe UI Emoji, Segoe UI`;
+        hx.fillText(tl.s, x + t / 2, y0 + t * (tl.lab || tl.off ? 0.40 : 0.5));
+        if (tl.lab || tl.off) { hx.font = `bold ${7.5 * u}px Segoe UI`; hx.fillStyle = lit ? tl.col : '#33415f'; hx.fillText(tl.off ? 'OFF' : tl.lab, x + t / 2, y0 + t * 0.82); }
+      }
+    });
+    hx.textAlign = 'left'; hx.textBaseline = 'alphabetic';
+  }
+  const pill = () => 0;
+  let px = 0, py = 0;
   // temperatura e dano
   const bar = (x, y, w, frac, col, label) => { hx.fillStyle = 'rgba(10,14,24,.8)'; hx.fillRect(x, y, w, 9 * u); hx.fillStyle = col; hx.fillRect(x, y, w * clamp(frac, 0, 1), 9 * u); hx.fillStyle = '#9fb0d0'; hx.font = `${11 * u}px Segoe UI`; hx.textAlign = 'left'; hx.textBaseline = 'alphabetic'; hx.fillText(label, x, y - 3 * u); };
   const bx = cx - R, by = cy - R - 12 * u - 80 * u;
   const tcol = v.temp > 112 ? '#ff4a3a' : v.temp > 100 ? '#ffb03a' : '#4cdc8a';
   bar(bx, by + 0 * u, 120 * u, (v.temp - 40) / 100, tcol, `Temperatura ${Math.round(v.temp)}°C`);
   const dtot = clamp(v.dmg.body * 0.7 + v.dmg.engine * 0.3, 0, 1);
+  { const fu = v.fuel / v.tank; bar(bx, by + 56 * u, 120 * u, fu, fu < 0.12 ? '#ff4a3a' : '#4aa8ff', (E.kind === 'ev' ? 'Bateria ' : 'Combustível ') + Math.round(fu * 100) + '% · ' + (E.kind === 'ev' ? v.fuel.toFixed(0) + ' kWh' : v.fuel.toFixed(0) + ' L')); }
   bar(bx, by + 28 * u, 120 * u, dtot, dtot > 0.6 ? '#ff4a3a' : '#ffb03a', `Dano ${Math.round(dtot * 100)}%` + (v.dmg.rad > 0.4 ? ' · radiador' : '') + (v.dmg.engine > 0.4 ? ' · motor' : ''));
   // ---- G-meter / telemetria ----
   const gx = 120 * u, gy = H - 130 * u, gr = 70 * u;
@@ -469,6 +524,7 @@ function drawHud() {
   hx.fillStyle = '#9fb0d0'; hx.font = `${11 * u}px Segoe UI`; hx.textAlign = 'center'; hx.fillText('G', 0, -gr - 6 * u); hx.fillText(Math.hypot(gxv, gyv).toFixed(2) + ' g', 0, gr + 14 * u);
   hx.restore();
   if (App.opt.telemetry) drawTelemetry(u, gx + gr + 30 * u, gy - gr);
+  drawMinimap(u);
   // ---- medições ----
   const m = App.meas; let ty = 16 * u; hx.textAlign = 'left'; hx.textBaseline = 'alphabetic'; hx.font = `${14 * u}px Segoe UI`;
   const line = (t, c = '#d8e2f5') => { hx.fillStyle = c; hx.fillText(t, 16 * u, ty += 20 * u); };
@@ -481,6 +537,41 @@ function drawHud() {
   if (App.paused) { hx.fillStyle = '#fff'; hx.font = `bold ${40 * u}px Segoe UI`; hx.textAlign = 'center'; hx.fillText('PAUSADO', W / 2, H / 2); }
   if (App.opt.timeScale < 1) { hx.fillStyle = '#ffd23a'; hx.font = `bold ${16 * u}px Segoe UI`; hx.textAlign = 'center'; hx.fillText('CÂMERA LENTA ' + App.opt.timeScale + '×', W / 2, 24 * u); }
   hx.textAlign = 'right'; hx.fillStyle = 'rgba(200,215,240,.6)'; hx.font = `${12 * u}px Segoe UI`; hx.fillText('G garagem · M mapas · C câmera · F1 ajuda', W - 14 * u, 20 * u);
+}
+function buildMinimap(w) {
+  const NS = w.NS, sc = w.sc, c = document.createElement('canvas'); c.width = c.height = NS;
+  const g = c.getContext('2d'), img = g.createImageData(NS, NS), d = img.data, S = w.S;
+  const COL = { 0: [250, 246, 226], 1: [196, 196, 200], 2: [214, 190, 150], 3: [134, 176, 112], 4: [232, 214, 160], 5: [188, 184, 176], 6: [130, 100, 70], 7: [160, 156, 152], 8: [240, 120, 120], 9: [120, 170, 225] };
+  for (let j = 0; j < NS; j++) for (let i = 0; i < NS; i++) {
+    const id = S[j * NS + i], col = COL[id] || [150, 150, 150];
+    const x = w.x0 + (i + 0.5) * sc, z = w.z0 + (j + 0.5) * sc;
+    const sh = clamp(1 + (w.rawHeight(x - sc * 1.5, z - sc * 1.5) - w.rawHeight(x + sc * 1.5, z + sc * 1.5)) * 0.05, 0.72, 1.25);
+    const k = id === 0 || id === 1 || id === 9 ? 1 : sh, o = (j * NS + i) * 4;
+    d[o] = col[0] * k; d[o + 1] = col[1] * k; d[o + 2] = col[2] * k; d[o + 3] = 255;
+  }
+  g.putImageData(img, 0, 0); return c;
+}
+function drawMinimap(u) {
+  const w = App.world; if (!w || !w.S) return;
+  const v = App.veh; if (!w._mini) w._mini = buildMinimap(w);
+  const W = innerWidth, R = 104 * u, cx = W - R - 16 * u, cy = R + 38 * u, k = App.miniZoom * w.sc;
+  const px = (v.pos.x - w.x0) / w.sc, py = (v.pos.z - w.z0) / w.sc, yaw = Math.atan2(-v.ax.z, v.ax.x), rot = App.miniNorth ? 0 : yaw - Math.PI / 2;
+  hx.save(); hx.beginPath(); hx.arc(cx, cy, R, 0, 7); hx.clip();
+  hx.fillStyle = '#1a2236'; hx.fillRect(cx - R, cy - R, 2 * R, 2 * R);
+  hx.translate(cx, cy); hx.rotate(rot);
+  const hs = R / k;
+  hx.drawImage(w._mini, px - hs, py - hs, 2 * hs, 2 * hs, -R, -R, 2 * R, 2 * R);
+  hx.restore();
+  hx.lineWidth = 3 * u; hx.strokeStyle = 'rgba(10,14,24,.9)'; hx.beginPath(); hx.arc(cx, cy, R, 0, 7); hx.stroke();
+  hx.lineWidth = 1.5 * u; hx.strokeStyle = '#46567f'; hx.beginPath(); hx.arc(cx, cy, R - 1.5 * u, 0, 7); hx.stroke();
+  // carro
+  hx.save(); hx.translate(cx, cy); hx.rotate(App.miniNorth ? Math.PI / 2 - yaw : 0);
+  hx.fillStyle = '#ff5a1a'; hx.strokeStyle = '#fff'; hx.lineWidth = 1.5 * u; hx.beginPath(); hx.moveTo(0, -9 * u); hx.lineTo(6.5 * u, 8 * u); hx.lineTo(0, 4 * u); hx.lineTo(-6.5 * u, 8 * u); hx.closePath(); hx.fill(); hx.stroke(); hx.restore();
+  hx.fillStyle = '#fff'; hx.font = `bold ${12 * u}px Segoe UI`; hx.textAlign = 'center'; hx.textBaseline = 'middle';
+  hx.fillText('N', cx + Math.sin(rot) * (R - 11 * u), cy - Math.cos(rot) * (R - 11 * u));
+  hx.fillStyle = 'rgba(8,12,20,.7)'; hx.fillRect(cx - 54 * u, cy + R + 3 * u, 108 * u, 16 * u);
+  hx.fillStyle = '#c8d4ee'; hx.font = `${10.5 * u}px Segoe UI`; hx.fillText(`raio ${Math.round(R / App.miniZoom)} m · -/= zoom · U`, cx, cy + R + 11 * u);
+  hx.textAlign = 'left'; hx.textBaseline = 'alphabetic';
 }
 function drawTelemetry(u, x0, y0) {
   const v = App.veh, s = App.spec;
@@ -518,12 +609,18 @@ App.step = function (dt, render = true) {
     while (App.acc >= DT && n < 40) { v.step(DT); App.acc -= DT; App.simTime += DT; n++; }
     if (n === 40) App.acc = 0;
     w.updateProps(dt * App.opt.timeScale, v);
+    if (w.anim) w.anim(performance.now() / 1000);
     emitFx(dt);
     updateMeasure(dt * App.opt.timeScale);
   }
   // luzes
   const reversing = v.gear === -1 && v.pedalThr > 0.05;
-  App.model.update(v, dt, { lights: App.lights, brake: v.pedalBrk > 0.05 || v.in.hand > 0.3, reverse: reversing });
+  const blink = Math.floor(performance.now() / 330) % 2 === 0;
+  if ((App.sigL || App.sigR || App.haz) && blink !== App._lastBlink && !App.menuOpen) audio.tick(blink);
+  App._lastBlink = blink; App.bulb = Math.max(0, App.bulb - dt);
+  const fuelF = v.fuel / v.tank;
+  if (fuelF < 0.12 && !App._lowF && !App.menuOpen) { App._lowF = true; audio.chime(); toast(v.spec.isEV ? 'Bateria baixa' : 'Combustível baixo'); } else if (fuelF > 0.2) App._lowF = false;
+  App.model.update(v, dt, { lights: App.lightMode > 0, mode: App.lightMode, fog: App.fog, sigL: App.sigL, sigR: App.sigR, haz: App.haz, blink, wipers: App.wipers, brake: v.pedalBrk > 0.05 || v.in.hand > 0.3, reverse: reversing });
   App.model.swSpin.rotation.x = -v.steerAng * 4.5;
   // sol segue o carro (sombra)
   sun.position.set(v.pos.x + sunDir.x * 120, v.pos.y + sunDir.y * 120, v.pos.z + sunDir.z * 120); sun.target.position.copy(v.pos);
