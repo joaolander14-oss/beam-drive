@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beam Drive — Simulador de Veículos</title>
+<link rel="stylesheet" href="./style.css?v=1">
+</head>
+<body>
+<canvas id="c"></canvas>
+<canvas id="hud"></canvas>
+
+<div id="toast"></div>
+<div id="loading"><div class="ld-title">BEAM DRIVE</div><div class="ld-sub" id="ldmsg">Carregando…</div><div class="ld-bar"><i id="ldbar"></i></div></div>
+
+<!-- menu / garagem -->
+<div id="menu" class="hidden">
+  <div class="mwrap">
+    <header>
+      <div class="brand">BEAM<b>DRIVE</b></div>
+      <nav id="tabs">
+        <button data-t="car" class="on">Carros</button>
+        <button data-t="garage">Garagem</button>
+        <button data-t="map">Mapas</button>
+        <button data-t="opt">Opções</button>
+        <button data-t="help">Controles</button>
+      </nav>
+      <button id="btnPlay" class="primary">▶ Dirigir (Esc)</button>
+    </header>
+    <section id="p-car" class="pane"></section>
+    <section id="p-garage" class="pane hidden">
+      <div class="garage">
+        <div class="gside" id="gstats"></div>
+        <div class="gmain"><div id="gtabs"></div><div id="gctl"></div></div>
+      </div>
+    </section>
+    <section id="p-map" class="pane hidden"></section>
+    <section id="p-opt" class="pane hidden"></section>
+    <section id="p-help" class="pane hidden"></section>
+  </div>
+</div>
+
+<div id="keys" class="hidden"></div>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js" } }
+</script>
+<script type="module" src="./js/main.js?v=1"></script>
+</body>
+</html>

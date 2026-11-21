@@ -1,0 +1,263 @@
+// ============================================================
+//  +100 carros reais (dados de ficha técnica) — gerados a partir de linhas compactas
+//  Linha: [id, nome, classe, arquétipo, C, L, A, entre-eixos, kg, tração(f/r/a), motor(n/t/s/d/e),
+//          cilindros, litros, cv(kW p/ elétrico), rpm cv, Nm, rpm Nm, corte, câmbio, pneus, cor, extras]
+// ============================================================
+import { CARS, ENGINES, GEARBOXES, buildCurve, clamp, tireDims, RHO, HP } from './data.js';
+
+const R = [
+  // ---------- compactos / hatches ----------
+  ['mobi', 'Fiat Mobi', 'Compacto', 'hatch', 3.57, 1.66, 1.49, 2.30, 930, 'f', 'n', 3, 1.0, 75, 6250, 107, 3250, 6700, '5mt-eco', '175/65R14', '#e8e8ea'],
+  ['uno', 'Fiat Uno Mille', 'Compacto', 'kei', 3.65, 1.55, 1.43, 2.36, 800, 'f', 'n', 4, 1.0, 58, 5500, 80, 3000, 6200, '5mt-eco', '155/80R13', '#c0392b'],
+  ['argo', 'Fiat Argo 1.3', 'Hatch', 'hatch', 3.99, 1.72, 1.50, 2.52, 1070, 'f', 'n', 4, 1.3, 109, 6250, 139, 3500, 6700, '5mt', '185/65R15', '#9aa0a6'],
+  ['abarth', 'Fiat 500 Abarth', 'Hot hatch', 'hatch', 3.66, 1.63, 1.49, 2.30, 1050, 'f', 't', 4, 1.4, 165, 5500, 230, 2250, 6500, '5mt', '205/40R17', '#c0392b'],
+  ['punto', 'Fiat Punto T-Jet', 'Hatch', 'hatch', 4.06, 1.69, 1.49, 2.51, 1200, 'f', 't', 4, 1.4, 152, 5500, 230, 2250, 6500, '6mt', '195/55R16', '#1f2a44'],
+  ['upts', 'Volkswagen up! TSI', 'Compacto', 'hatch', 3.60, 1.64, 1.50, 2.42, 950, 'f', 't', 3, 1.0, 105, 5000, 175, 1750, 6200, '5mt', '185/55R15', '#f1c40f'],
+  ['polo', 'Volkswagen Polo GTI', 'Hot hatch', 'hatch', 4.05, 1.75, 1.45, 2.55, 1300, 'f', 't', 4, 2.0, 200, 5500, 320, 1500, 6500, '7dct', '215/45R17', '#8e1b1b'],
+  ['golfr', 'Volkswagen Golf R', 'Hot hatch', 'hatch', 4.27, 1.80, 1.46, 2.63, 1480, 'a', 't', 4, 2.0, 310, 5500, 400, 2000, 6800, '7dct', '235/35R19', '#2d4f9a'],
+  ['golf1', 'Volkswagen Golf GTI Mk1', 'Clássico', 'hatch', 3.81, 1.63, 1.40, 2.40, 810, 'f', 'n', 4, 1.6, 110, 6100, 140, 5000, 6600, '5mt', '175/70R13', '#d8d8d8'],
+  ['gol', 'Volkswagen Gol G5 1.6', 'Compacto', 'hatch', 3.89, 1.65, 1.46, 2.47, 1000, 'f', 'n', 4, 1.6, 104, 5750, 153, 2500, 6400, '5mt', '175/70R14', '#7f8c8d'],
+  ['fit', 'Honda Fit', 'Hatch', 'hatch', 4.00, 1.69, 1.53, 2.53, 1050, 'f', 'n', 4, 1.5, 116, 6600, 150, 4600, 6900, 'cvt', '185/60R15', '#3498db'],
+  ['civicr', 'Honda Civic Type R FK8', 'Hot hatch', 'hatch', 4.56, 1.88, 1.43, 2.70, 1390, 'f', 't', 4, 2.0, 320, 6500, 400, 2500, 7000, '6mt-close', '245/30R20', '#f2f2f2'],
+  ['ep3', 'Honda Civic Type R EP3', 'Hot hatch', 'hatch', 4.06, 1.70, 1.46, 2.55, 1200, 'f', 'n', 4, 2.0, 200, 7400, 196, 5900, 8000, '6mt', '205/50R16', '#d8d8d8'],
+  ['ek9', 'Honda Civic Type R EK9', 'Clássico', 'hatch', 4.18, 1.69, 1.36, 2.62, 1050, 'f', 'n', 4, 1.6, 185, 8200, 160, 7500, 8600, '5mt', '195/55R15', '#f1f1f1'],
+  ['yaris', 'Toyota GR Yaris', 'Hot hatch', 'hatch', 3.99, 1.80, 1.46, 2.56, 1280, 'a', 't', 3, 1.6, 261, 6500, 360, 3000, 7000, '6mt', '225/40R18', '#c0392b', { wing: 'lip' }],
+  ['ae86', 'Toyota Corolla AE86', 'Clássico', 'coupe', 4.20, 1.63, 1.31, 2.40, 950, 'r', 'n', 4, 1.6, 128, 6600, 149, 5200, 7600, '5mt', '195/60R14', '#f2f2f2', { drift: 1 }],
+  ['mx5', 'Mazda MX-5 ND', 'Roadster', 'coupe', 3.92, 1.73, 1.23, 2.31, 1050, 'r', 'n', 4, 2.0, 181, 7000, 205, 4000, 7500, '6mt', '205/45R17', '#c0392b'],
+  ['mps3', 'Mazdaspeed3', 'Hot hatch', 'hatch', 4.50, 1.77, 1.46, 2.64, 1430, 'f', 't', 4, 2.3, 263, 5500, 380, 3000, 6700, '6mt', '225/40R18', '#7f8c8d'],
+  ['rx7', 'Mazda RX-7 FD', 'Esportivo', 'coupe', 4.28, 1.75, 1.23, 2.43, 1280, 'r', 't', 4, 1.3, 255, 6500, 294, 5000, 7500, '5mt', '225/50R16', '#c0392b', { rot: 1, lsd: 1 }],
+  ['cooper', 'Mini Cooper S F56', 'Hot hatch', 'hatch', 3.88, 1.73, 1.43, 2.49, 1200, 'f', 't', 4, 2.0, 192, 5000, 280, 1250, 6500, '6mt', '205/45R17', '#c0392b'],
+  ['fiesta', 'Ford Fiesta ST', 'Hot hatch', 'hatch', 4.07, 1.73, 1.48, 2.49, 1250, 'f', 't', 4, 1.6, 182, 5700, 240, 1600, 6500, '6mt', '205/40R17', '#f1c40f'],
+  ['focusrs', 'Ford Focus RS Mk3', 'Hot hatch', 'hatch', 4.39, 1.82, 1.47, 2.65, 1560, 'a', 't', 4, 2.3, 350, 6000, 440, 3200, 6800, '6mt', '235/35R19', '#2d6ab0'],
+  ['clio', 'Renault Clio RS 200', 'Hot hatch', 'hatch', 4.09, 1.73, 1.45, 2.59, 1280, 'f', 'n', 4, 2.0, 200, 7100, 215, 5400, 7500, '6mt', '205/45R17', '#f1c40f'],
+  ['p208', 'Peugeot 208 GTi', 'Hot hatch', 'hatch', 3.96, 1.74, 1.46, 2.54, 1160, 'f', 't', 4, 1.6, 208, 6000, 300, 1700, 6500, '6mt', '205/40R17', '#c0392b'],
+  ['onix', 'Chevrolet Onix 1.0 Turbo', 'Hatch', 'hatch', 4.16, 1.73, 1.47, 2.53, 1100, 'f', 't', 3, 1.0, 116, 5500, 165, 2000, 6300, '6at', '195/55R16', '#d8d8d8'],
+  ['hb20', 'Hyundai HB20 1.0 Turbo', 'Hatch', 'hatch', 3.94, 1.68, 1.50, 2.53, 1100, 'f', 't', 3, 1.0, 120, 6000, 172, 1500, 6500, '6mt', '195/55R16', '#2c3e50'],
+  ['i30n', 'Hyundai i30 N', 'Hot hatch', 'hatch', 4.34, 1.80, 1.45, 2.65, 1450, 'f', 't', 4, 2.0, 280, 6000, 392, 2100, 6800, '6mt', '235/35R19', '#2d6ab0'],
+  ['swift', 'Suzuki Swift Sport', 'Hot hatch', 'hatch', 3.89, 1.74, 1.50, 2.45, 1000, 'f', 't', 4, 1.4, 140, 5500, 230, 2500, 6300, '6mt', '195/45R17', '#c0392b'],
+  ['delta', 'Lancia Delta Integrale Evo', 'Rali', 'hatch', 3.95, 1.77, 1.37, 2.48, 1240, 'a', 't', 4, 2.0, 215, 5750, 300, 2500, 6700, '5mt', '205/45R16', '#8e1b1b', { wing: 'duck', rally: 1 }],
+  ['a110', 'Alpine A110', 'Esportivo', 'coupe', 4.18, 1.80, 1.25, 2.42, 1100, 'r', 't', 4, 1.8, 252, 6000, 320, 2000, 6800, '7dct', '205/40R18', '#2d6ab0', { mid: 1 }],
+  ['smart', 'Smart Fortwo', 'Urbano', 'kei', 2.69, 1.66, 1.55, 1.87, 880, 'r', 't', 3, 0.9, 90, 5500, 135, 2500, 6500, '6mt', '165/65R15', '#f1c40f', { rear: 1 }],
+  ['mini', 'Mini Clássico 1275', 'Clássico', 'kei', 3.05, 1.41, 1.35, 2.04, 620, 'f', 'n', 4, 1.3, 63, 5000, 95, 2600, 6200, '4mt', '145/70R12', '#c0392b'],
+  ['cv2', 'Citroën 2CV', 'Clássico', 'beetle', 3.83, 1.48, 1.60, 2.40, 560, 'f', 'n', 2, 0.6, 29, 3750, 44, 2000, 4800, '4mt', '125/80R15', '#d8d8c0'],
+  // ---------- sedãs / cupês / wagons ----------
+  ['camry', 'Toyota Camry V6', 'Sedã', 'sedan', 4.88, 1.84, 1.44, 2.82, 1600, 'f', 'n', 6, 3.5, 301, 6600, 361, 4700, 7000, '8at', '235/45R18', '#7f8c8d'],
+  ['civic', 'Honda Civic 1.5 Turbo', 'Sedã', 'sedan', 4.67, 1.80, 1.42, 2.70, 1300, 'f', 't', 4, 1.5, 173, 5500, 220, 1700, 6500, 'cvt', '215/50R17', '#2c3e50'],
+  ['jetta', 'Volkswagen Jetta GLI', 'Sedã', 'sedan', 4.70, 1.80, 1.46, 2.69, 1400, 'f', 't', 4, 2.0, 228, 6200, 350, 1600, 6800, '7dct', '225/40R18', '#ecf0f1'],
+  ['cruze', 'Chevrolet Cruze 1.4 Turbo', 'Sedã', 'sedan', 4.67, 1.79, 1.47, 2.70, 1350, 'f', 't', 4, 1.4, 153, 5600, 240, 2000, 6300, '6at', '215/50R17', '#7f8c8d'],
+  ['fusion', 'Ford Fusion AWD 2.0T', 'Sedã', 'sedan', 4.87, 1.85, 1.48, 2.85, 1700, 'a', 't', 4, 2.0, 240, 5500, 366, 3000, 6200, '6at', '235/45R18', '#1f2a44'],
+  ['opala', 'Chevrolet Opala SS 4.1', 'Clássico', 'sedan', 4.60, 1.72, 1.34, 2.67, 1200, 'r', 'n', 6, 4.1, 171, 4500, 304, 2400, 5000, '4mt', '185/70R14', '#e67e22'],
+  ['e30', 'BMW M3 E30', 'Clássico', 'sedan', 4.35, 1.68, 1.36, 2.57, 1200, 'r', 'n', 4, 2.3, 200, 6750, 240, 4750, 7300, '5mt', '205/55R15', '#d8d8d8'],
+  ['e46', 'BMW M3 E46', 'Esportivo', 'coupe', 4.49, 1.78, 1.37, 2.73, 1560, 'r', 'n', 6, 3.2, 343, 7900, 365, 4900, 8000, '6mt', '225/45R18|255/40R18', '#2d4f9a', { lsd: 1 }],
+  ['e92', 'BMW M3 E92 V8', 'Esportivo', 'coupe', 4.58, 1.82, 1.42, 2.76, 1655, 'r', 'n', 8, 4.0, 420, 8300, 400, 3900, 8400, '7dct', '245/40R18|265/40R18', '#7f8c8d', { lsd: 1 }],
+  ['g80', 'BMW M3 G80 Competition', 'Esportivo', 'sedan', 4.79, 1.90, 1.43, 2.86, 1730, 'r', 't', 6, 3.0, 510, 6250, 650, 2750, 7200, '8at', '275/35R19|285/30R20', '#2ecc71', { lsd: 1 }],
+  ['m5', 'BMW M5 E39', 'Sedã esportivo', 'sedan', 4.78, 1.80, 1.44, 2.83, 1700, 'r', 'n', 8, 5.0, 400, 6600, 500, 3800, 7000, '6mt', '245/40R18', '#2c3e50'],
+  ['m2', 'BMW M2', 'Esportivo', 'coupe', 4.46, 1.85, 1.41, 2.69, 1560, 'r', 't', 6, 3.0, 370, 6500, 465, 1900, 7300, '6mt', '245/35R19|265/35R19', '#f1c40f'],
+  ['c63', 'Mercedes-AMG C63 W204', 'Sedã esportivo', 'sedan', 4.73, 1.77, 1.44, 2.76, 1730, 'r', 'n', 8, 6.2, 457, 6800, 600, 5000, 7200, '8at', '235/40R18|255/35R18', '#d8d8d8'],
+  ['a45', 'Mercedes-AMG A45', 'Hot hatch', 'hatch', 4.43, 1.78, 1.41, 2.73, 1550, 'a', 't', 4, 2.0, 381, 6000, 475, 3000, 7000, '7dct', '235/35R19', '#7f8c8d'],
+  ['amggt', 'Mercedes-AMG GT', 'Esportivo', 'coupe', 4.55, 1.94, 1.29, 2.63, 1540, 'r', 't', 8, 4.0, 462, 6000, 600, 1900, 7000, '7dct', '265/35R19|295/35R20', '#f1c40f', { lsd: 1 }],
+  ['g63', 'Mercedes-AMG G63', 'Off-road', 'boxy', 4.87, 1.98, 1.97, 2.89, 2560, 'a', 't', 8, 4.0, 585, 6000, 850, 2500, 6500, '8at', '275/50R20', '#1f2a44', { x4: 1 }],
+  ['rs3', 'Audi RS3', 'Hot hatch', 'hatch', 4.54, 1.85, 1.41, 2.63, 1570, 'a', 't', 5, 2.5, 400, 5600, 500, 2250, 7000, '7dct', '255/35R19', '#8e1b1b'],
+  ['ttrs', 'Audi TT RS', 'Esportivo', 'coupe', 4.19, 1.83, 1.34, 2.50, 1450, 'a', 't', 5, 2.5, 400, 5800, 480, 1700, 7000, '7dct', '255/35R19', '#2d6ab0'],
+  ['r8', 'Audi R8 V10', 'Supercarro', 'super', 4.43, 1.94, 1.24, 2.65, 1600, 'a', 'n', 10, 5.2, 570, 8000, 550, 6500, 8700, '7dct', '245/30R19|295/30R19', '#f1c40f', { mid: 1 }],
+  ['rs6', 'Audi RS6 Avant', 'Perua esportiva', 'wagon', 4.99, 1.95, 1.46, 2.92, 2025, 'a', 't', 8, 4.0, 600, 6000, 800, 2050, 6800, '8at', '285/40R21', '#2c3e50'],
+  ['quattro', 'Audi Ur-Quattro', 'Rali', 'coupe', 4.40, 1.72, 1.34, 2.52, 1300, 'a', 't', 5, 2.1, 200, 5500, 285, 3500, 6500, '5mt', '215/50R15', '#d8d8d8', { rally: 1 }],
+  ['giulia', 'Alfa Romeo Giulia Quadrifoglio', 'Sedã esportivo', 'sedan', 4.64, 1.87, 1.43, 2.82, 1580, 'r', 't', 6, 2.9, 510, 6500, 600, 2500, 7200, '8at', '255/35R19|285/30R19', '#c0392b', { lsd: 1 }],
+  ['alfa4c', 'Alfa Romeo 4C', 'Esportivo', 'coupe', 3.99, 1.87, 1.18, 2.38, 1050, 'r', 't', 4, 1.75, 240, 6000, 350, 2100, 6700, '7dct', '205/45R17|235/40R18', '#c0392b', { mid: 1 }],
+  ['kia_st', 'Kia Stinger GT', 'Sedã esportivo', 'fast', 4.83, 1.87, 1.40, 2.91, 1900, 'a', 't', 6, 3.3, 365, 6000, 510, 1300, 6500, '8at', '255/35R19', '#8e1b1b'],
+  ['volvo60', 'Volvo V60 Polestar', 'Perua esportiva', 'wagon', 4.64, 1.85, 1.43, 2.78, 1750, 'a', 's', 4, 2.0, 367, 6000, 470, 3100, 6500, '8at', '245/40R19', '#2d6ab0'],
+  ['p944', 'Porsche 944 Turbo', 'Clássico', 'coupe', 4.29, 1.73, 1.28, 2.40, 1280, 'r', 't', 4, 2.5, 250, 6000, 350, 4000, 6500, '5mt', '225/50R16', '#c0392b'],
+  // ---------- esportivos japoneses ----------
+  ['r34', 'Nissan Skyline GT-R R34', 'Esportivo', 'coupe', 4.60, 1.79, 1.36, 2.67, 1560, 'a', 't', 6, 2.6, 330, 6800, 392, 4400, 8000, '6mt', '235/45R17', '#2d6ab0', { wing: 'gt', cf: 0.0, lsd: 1 }],
+  ['r35', 'Nissan GT-R R35', 'Supercarro', 'coupe', 4.68, 1.89, 1.37, 2.78, 1740, 'a', 't', 6, 3.8, 565, 6800, 633, 3300, 7200, '7dct', '255/40R20|285/35R20', '#d8d8d8', { wing: 'gt' }],
+  ['z350', 'Nissan 350Z', 'Esportivo', 'coupe', 4.31, 1.82, 1.32, 2.65, 1480, 'r', 'n', 6, 3.5, 296, 6200, 363, 4800, 7000, '6mt', '225/45R18|245/45R18', '#f1c40f'],
+  ['z370', 'Nissan 370Z', 'Esportivo', 'coupe', 4.25, 1.85, 1.32, 2.55, 1470, 'r', 'n', 6, 3.7, 328, 7000, 363, 5200, 7500, '6mt', '245/40R19|275/35R19', '#e67e22'],
+  ['s15', 'Nissan Silvia S15', 'Esportivo', 'coupe', 4.45, 1.73, 1.30, 2.52, 1240, 'r', 't', 4, 2.0, 247, 6400, 275, 4800, 7500, '6mt', '205/50R16', '#f2f2f2', { drift: 1 }],
+  ['supra', 'Toyota GR Supra A90', 'Esportivo', 'coupe', 4.38, 1.85, 1.29, 2.47, 1500, 'r', 't', 6, 3.0, 340, 5000, 500, 1600, 6500, '8at', '255/35R19|275/35R19', '#c0392b', { lsd: 1 }],
+  ['gr86', 'Toyota GR86', 'Esportivo', 'coupe', 4.27, 1.78, 1.31, 2.58, 1280, 'r', 'n', 4, 2.4, 228, 7000, 250, 3700, 7400, '6mt', '215/40R18', '#2d6ab0', { boxer: 1 }],
+  ['nsx', 'Honda NSX NA1', 'Clássico', 'super', 4.43, 1.81, 1.17, 2.53, 1350, 'r', 'n', 6, 3.0, 274, 7100, 284, 5300, 8000, '5mt', '205/50R15|225/50R16', '#c0392b', { mid: 1 }],
+  ['s2000', 'Honda S2000', 'Roadster', 'coupe', 4.12, 1.75, 1.28, 2.40, 1270, 'r', 'n', 4, 2.0, 240, 8300, 208, 7500, 9000, '6mt', '205/55R16|225/50R16', '#f1c40f'],
+  ['evo10', 'Mitsubishi Lancer Evolution X', 'Rali', 'sedan', 4.51, 1.81, 1.48, 2.65, 1560, 'a', 't', 4, 2.0, 295, 6500, 366, 3500, 7000, '6mt', '245/40R18', '#d8d8d8', { wing: 'gt', rally: 1 }],
+  ['gc8', 'Subaru Impreza 22B/GC8', 'Rali', 'sedan', 4.34, 1.69, 1.41, 2.52, 1250, 'a', 't', 4, 2.0, 280, 6500, 343, 4000, 7200, '5mt', '225/45R17', '#2d4f9a', { wing: 'gt', rally: 1, boxer: 1 }],
+  ['kei_jimny', 'Suzuki Jimny', 'Off-road', 'boxy', 3.65, 1.65, 1.72, 2.25, 1090, 'a', 'n', 4, 1.5, 102, 6000, 130, 4000, 6500, '5mt', '195/80R15', '#2ecc71', { x4: 1 }],
+  ['escort', 'Ford Escort RS Cosworth', 'Rali', 'hatch', 4.20, 1.73, 1.36, 2.61, 1300, 'a', 't', 4, 2.0, 227, 6250, 304, 3500, 6800, '5mt', '225/45R16', '#2d4f9a', { wing: 'big', rally: 1 }],
+  ['stratos', 'Lancia Stratos', 'Rali', 'super', 3.71, 1.75, 1.11, 2.18, 980, 'r', 'n', 6, 2.4, 190, 7000, 226, 5000, 7800, '5mt', '195/50R15|225/50R15', '#2ecc71', { mid: 1 }],
+  ['datsun', 'Datsun 240Z', 'Clássico', 'coupe', 4.14, 1.63, 1.28, 2.30, 1020, 'r', 'n', 6, 2.4, 151, 5600, 198, 4000, 6500, '5mt', '195/70R14', '#e67e22'],
+  ['delorean', 'DeLorean DMC-12', 'Clássico', 'coupe', 4.27, 1.85, 1.14, 2.41, 1230, 'r', 'n', 6, 2.85, 130, 5500, 207, 2750, 6000, '5mt', '195/60R14|235/60R15', '#c0c4c8', { rear: 1 }],
+  // ---------- muscle / americanos ----------
+  ['mustang89', 'Ford Mustang Fox Body 5.0', 'Clássico', 'muscle', 4.51, 1.73, 1.31, 2.56, 1300, 'r', 'n', 8, 5.0, 225, 4200, 400, 3200, 5500, '5mt', '225/60R15', '#2d4f9a'],
+  ['gto69', 'Pontiac GTO 1969', 'Muscle clássico', 'muscle', 5.16, 1.94, 1.35, 2.95, 1700, 'r', 'n', 8, 6.5, 366, 5100, 600, 3600, 5800, '4mt', '215/70R14', '#e67e22'],
+  ['z28', 'Chevrolet Camaro Z28 1969', 'Muscle clássico', 'muscle', 4.76, 1.88, 1.30, 2.74, 1500, 'r', 'n', 8, 5.0, 290, 5800, 475, 4200, 6500, '4mt', '215/70R14', '#2d6ab0'],
+  ['charger69', 'Dodge Charger R/T 1969', 'Muscle clássico', 'muscle', 5.28, 1.95, 1.35, 2.97, 1750, 'r', 'n', 8, 7.2, 375, 4600, 650, 3200, 5500, '4mt', '215/70R14', '#1f1f22'],
+  ['chevelle', 'Chevrolet Chevelle SS 454', 'Muscle clássico', 'muscle', 4.94, 1.88, 1.35, 2.92, 1800, 'r', 'n', 8, 7.4, 450, 5600, 680, 3600, 6000, '4mt', '215/70R14', '#d8d8d8'],
+  ['cobra', 'Shelby Cobra 427', 'Clássico', 'coupe', 3.97, 1.74, 1.23, 2.29, 1100, 'r', 'n', 8, 7.0, 425, 6000, 650, 3700, 6500, '4mt', '185/70R15|225/70R15', '#2d6ab0'],
+  ['camaro', 'Chevrolet Camaro SS', 'Muscle car', 'muscle', 4.78, 1.90, 1.34, 2.81, 1650, 'r', 'n', 8, 6.2, 455, 6000, 617, 4400, 6600, '6mt', '245/40R20|275/35R20', '#f1c40f'],
+  ['challenger', 'Dodge Challenger R/T 5.7', 'Muscle car', 'muscle', 5.02, 1.92, 1.45, 2.95, 1850, 'r', 'n', 8, 5.7, 375, 5250, 556, 4250, 6200, '6mt', '245/45R20', '#8e1b1b'],
+  ['hellcat', 'Dodge Charger Hellcat', 'Muscle car', 'muscle', 5.28, 1.95, 1.48, 3.05, 2050, 'r', 's', 8, 6.2, 707, 6000, 881, 4800, 6200, '8at', '275/40R20', '#8e44ad', { lsd: 1 }],
+  ['gt500', 'Ford Mustang Shelby GT500', 'Muscle car', 'muscle', 4.81, 1.92, 1.40, 2.72, 1860, 'r', 's', 8, 5.2, 760, 7300, 847, 5000, 7500, '7dct', '305/30R20|315/30R20', '#2d6ab0', { wing: 'gt', lsd: 1 }],
+  ['vette_c6', 'Chevrolet Corvette C6 ZR1', 'Esportivo', 'muscle', 4.48, 1.92, 1.24, 2.69, 1530, 'r', 's', 8, 6.2, 638, 6500, 819, 3800, 6600, '6mt', '285/30R19|335/25R20', '#d8d8d8', { lsd: 1 }],
+  ['vette_c8', 'Chevrolet Corvette C8', 'Supercarro', 'super', 4.63, 1.94, 1.22, 2.72, 1530, 'r', 'n', 8, 6.2, 495, 6450, 637, 5150, 6600, '8at', '245/35R19|305/30R20', '#e67e22', { mid: 1 }],
+  ['fordgt', 'Ford GT (2005)', 'Supercarro', 'super', 4.64, 1.95, 1.12, 2.71, 1520, 'r', 's', 8, 5.4, 550, 6500, 678, 3750, 6600, '6mt', '235/45R18|315/40R19', '#2d4f9a', { mid: 1 }],
+  ['trans', 'Pontiac Firebird Trans Am', 'Muscle clássico', 'muscle', 4.89, 1.88, 1.26, 2.74, 1700, 'r', 'n', 8, 6.6, 220, 3600, 440, 2000, 5000, '3at-drag', '225/60R15', '#1f1f22'],
+  // ---------- supercarros / hipercarros ----------
+  ['f40', 'Ferrari F40', 'Supercarro', 'super', 4.44, 1.97, 1.12, 2.45, 1100, 'r', 't', 8, 2.9, 478, 7000, 577, 4000, 7800, '5mt', '245/40R17|335/35R17', '#c0392b', { mid: 1, wing: 'gt' }],
+  ['f488', 'Ferrari 488 GTB', 'Supercarro', 'super', 4.57, 1.95, 1.21, 2.65, 1475, 'r', 't', 8, 3.9, 670, 8000, 760, 3000, 8200, '7dct', '245/35R20|305/30R20', '#c0392b', { mid: 1 }],
+  ['f458', 'Ferrari 458 Italia', 'Supercarro', 'super', 4.53, 1.94, 1.21, 2.65, 1380, 'r', 'n', 8, 4.5, 570, 9000, 540, 6000, 9200, '7dct', '235/35R20|295/30R20', '#f1c40f', { mid: 1 }],
+  ['f812', 'Ferrari 812 Superfast', 'Supercarro', 'super', 4.66, 1.97, 1.28, 2.72, 1525, 'r', 'n', 12, 6.5, 789, 8500, 718, 7000, 8900, '7dct', '275/35R20|315/35R20', '#c0392b', { lsd: 1 }],
+  ['testarossa', 'Ferrari Testarossa', 'Clássico', 'super', 4.49, 1.98, 1.13, 2.55, 1506, 'r', 'n', 12, 4.9, 390, 6300, 490, 4500, 6800, '5mt', '225/50R16|255/50R16', '#d8d8d8', { mid: 1 }],
+  ['f250', 'Ferrari 250 GTO', 'Clássico', 'coupe', 4.41, 1.60, 1.25, 2.40, 880, 'r', 'n', 12, 3.0, 300, 7500, 294, 5500, 8000, '5mt', '185/70R16|215/70R16', '#c0392b'],
+  ['aventador', 'Lamborghini Aventador SVJ', 'Hipercarro', 'super', 4.94, 2.03, 1.14, 2.70, 1525, 'a', 'n', 12, 6.5, 770, 8500, 720, 6750, 8800, '7dct', '255/30R20|355/25R21', '#2ecc71', { wing: 'big', cf: 0.1 }],
+  ['gallardo', 'Lamborghini Gallardo', 'Supercarro', 'super', 4.39, 1.90, 1.16, 2.56, 1430, 'a', 'n', 10, 5.0, 520, 8000, 510, 4250, 8300, '6mt', '235/35R19|295/30R19', '#e67e22', { mid: 1 }],
+  ['urus', 'Lamborghini Urus', 'SUV esportivo', 'suv', 5.11, 2.02, 1.64, 3.00, 2200, 'a', 't', 8, 4.0, 650, 6000, 850, 2250, 6800, '8at', '285/40R22|325/35R22', '#f1c40f'],
+  ['mclaren720', 'McLaren 720S', 'Supercarro', 'super', 4.54, 1.93, 1.20, 2.67, 1419, 'r', 't', 8, 4.0, 720, 7000, 770, 5500, 8200, '7dct', '245/35R19|305/30R20', '#e67e22', { mid: 1 }],
+  ['f1mc', 'McLaren F1', 'Hipercarro', 'super', 4.29, 1.82, 1.14, 2.72, 1138, 'r', 'n', 12, 6.1, 627, 7400, 650, 5600, 7800, '6mt', '235/45R17|315/45R17', '#d8d8d8', { mid: 1 }],
+  ['veyron', 'Bugatti Veyron 16.4', 'Hipercarro', 'super', 4.46, 2.00, 1.20, 2.71, 1888, 'a', 't', 16, 8.0, 1001, 6000, 1250, 2200, 6500, '7dct', '265/40R20|365/35R21', '#2d4f9a'],
+  ['huayra', 'Pagani Huayra', 'Hipercarro', 'super', 4.60, 2.03, 1.17, 2.79, 1350, 'r', 't', 12, 6.0, 730, 6200, 1000, 2400, 6700, '7dct', '255/35R19|335/30R20', '#7f8c8d', { mid: 1 }],
+  ['vantage', 'Aston Martin Vantage', 'Esportivo', 'coupe', 4.47, 1.94, 1.27, 2.70, 1530, 'r', 't', 8, 4.0, 503, 6000, 685, 2000, 7000, '8at', '255/40R20|295/35R20', '#2ecc71', { lsd: 1 }],
+  ['ftype', 'Jaguar F-Type R', 'Esportivo', 'coupe', 4.47, 1.92, 1.31, 2.62, 1730, 'a', 's', 8, 5.0, 575, 6500, 700, 3500, 6800, '8at', '255/35R20|295/30R20', '#2d6ab0'],
+  ['etype', 'Jaguar E-Type', 'Clássico', 'coupe', 4.45, 1.66, 1.24, 2.44, 1230, 'r', 'n', 6, 4.2, 265, 5400, 384, 4000, 5800, '4mt', '185/70R15', '#2ecc71'],
+  ['exige', 'Lotus Exige S', 'Esportivo', 'coupe', 3.80, 1.73, 1.13, 2.35, 1100, 'r', 's', 6, 3.5, 345, 7000, 400, 4500, 7200, '6mt', '195/50R16|225/45R17', '#f1c40f', { mid: 1 }],
+  // ---------- Porsche ----------
+  ['p911', 'Porsche 911 Carrera (992)', 'Esportivo', 'coupe', 4.52, 1.85, 1.30, 2.45, 1500, 'r', 't', 6, 3.0, 385, 6500, 450, 1950, 7400, '8at', '235/40R19|295/35R20', '#d8d8d8', { rear: 1, lsd: 1 }],
+  ['gt3', 'Porsche 911 GT3 (992)', 'Esportivo', 'coupe', 4.57, 1.85, 1.28, 2.46, 1435, 'r', 'n', 6, 4.0, 510, 8400, 470, 6100, 9000, '7dct', '255/35R20|315/30R21', '#f1c40f', { rear: 1, wing: 'big', lsd: 1, boxer: 1 }],
+  ['turbos', 'Porsche 911 Turbo S', 'Supercarro', 'coupe', 4.54, 1.90, 1.30, 2.45, 1640, 'a', 't', 6, 3.8, 650, 6750, 800, 2500, 7200, '8at', '255/35R20|315/30R21', '#2c3e50', { rear: 1, cf: 0.3 }],
+  ['gt4', 'Porsche Cayman GT4', 'Esportivo', 'coupe', 4.45, 1.82, 1.27, 2.48, 1420, 'r', 'n', 6, 4.0, 414, 7600, 420, 5000, 7800, '6mt', '245/35R20|295/30R20', '#c0392b', { mid: 1, lsd: 1, boxer: 1 }],
+  ['macan', 'Porsche Macan GTS', 'SUV esportivo', 'suv', 4.68, 1.92, 1.62, 2.81, 1900, 'a', 't', 6, 2.9, 440, 5700, 550, 1800, 6800, '7dct', '265/40R21|295/35R21', '#2c3e50'],
+  ['taycan', 'Porsche Taycan Turbo S', 'Elétrico', 'fast', 4.96, 1.97, 1.38, 2.90, 2295, 'a', 'e', 0, 0, 560, 0, 1050, 0, 16000, 'ev-2', '265/35R21|305/30R21', '#8e1b1b'],
+  // ---------- elétricos ----------
+  ['models', 'Tesla Model S Plaid', 'Elétrico', 'fast', 4.98, 1.96, 1.44, 2.96, 2162, 'a', 'e', 0, 0, 760, 0, 1420, 0, 18000, 'ev-1', '245/35R21|295/30R21', '#c0392b'],
+  ['leaf', 'Nissan Leaf', 'Elétrico', 'hatch', 4.48, 1.79, 1.54, 2.70, 1600, 'f', 'e', 0, 0, 110, 0, 320, 0, 10500, 'ev-1', '215/50R17', '#ecf0f1'],
+  ['bmwi3', 'BMW i3', 'Elétrico', 'hatch', 4.01, 1.78, 1.55, 2.57, 1300, 'r', 'e', 0, 0, 125, 0, 250, 0, 11500, 'ev-1', '155/70R19|175/60R19', '#2d6ab0', { rear: 1 }],
+  ['mache', 'Ford Mustang Mach-E GT', 'Elétrico', 'suv', 4.73, 1.88, 1.60, 2.98, 2250, 'a', 'e', 0, 0, 358, 0, 860, 0, 14000, 'ev-1', '255/40R20', '#2d6ab0'],
+  ['nevera', 'Rimac Nevera', 'Hipercarro', 'super', 4.75, 1.99, 1.21, 2.76, 2150, 'a', 'e', 0, 0, 1400, 0, 2360, 0, 17000, 'ev-2', '275/35R20|315/30R21', '#f1c40f'],
+  ['r1t', 'Rivian R1T', 'Picape elétrica', 'pickup', 5.49, 2.07, 1.82, 3.45, 3100, 'a', 'e', 0, 0, 619, 0, 1120, 0, 12500, 'ev-1', '275/65R20', '#2ecc71', { x4: 1 }],
+  // ---------- SUV / off-road / picapes / vans ----------
+  ['hrv', 'Honda HR-V', 'SUV compacto', 'suv', 4.33, 1.79, 1.60, 2.61, 1300, 'f', 'n', 4, 1.8, 140, 6500, 174, 4300, 7000, 'cvt', '215/55R17', '#ecf0f1'],
+  ['creta', 'Hyundai Creta 2.0', 'SUV compacto', 'suv', 4.30, 1.79, 1.63, 2.61, 1300, 'f', 'n', 4, 2.0, 167, 6200, 205, 4500, 6800, '6at', '205/60R16', '#7f8c8d'],
+  ['duster', 'Renault Duster 1.6', 'SUV compacto', 'suv', 4.34, 1.80, 1.69, 2.67, 1250, 'f', 'n', 4, 1.6, 118, 5500, 157, 4000, 6200, '5mt', '215/65R16', '#c0392b'],
+  ['crv', 'Honda CR-V 1.5T', 'SUV', 'suv', 4.60, 1.85, 1.69, 2.66, 1600, 'a', 't', 4, 1.5, 190, 5600, 243, 2000, 6500, 'cvt', '235/60R18', '#2c3e50'],
+  ['grand', 'Jeep Grand Cherokee SRT', 'SUV esportivo', 'suv', 4.88, 1.95, 1.70, 2.92, 2400, 'a', 'n', 8, 6.4, 475, 6000, 637, 4300, 6400, '8at', '295/45R20', '#1f1f22'],
+  ['rrsport', 'Range Rover Sport SVR', 'SUV esportivo', 'suv', 4.88, 2.07, 1.80, 2.92, 2400, 'a', 's', 8, 5.0, 575, 6000, 700, 3500, 6500, '8at', '275/40R22', '#2c3e50'],
+  ['bronco', 'Ford Bronco', 'Off-road', 'boxy', 4.81, 1.93, 1.85, 2.95, 2050, 'a', 't', 6, 2.7, 330, 5250, 563, 3000, 6000, '8at', '285/70R17', '#e67e22', { x4: 1 }],
+  ['defender', 'Land Rover Defender 110', 'Off-road', 'boxy', 5.02, 1.99, 1.97, 3.02, 2300, 'a', 't', 6, 3.0, 400, 5500, 550, 2000, 6200, '8at', '255/70R18', '#2ecc71', { x4: 1 }],
+  ['def90', 'Land Rover Defender 90 Td5', 'Off-road', 'boxy', 3.88, 1.79, 2.03, 2.36, 1750, 'a', 'd', 5, 2.5, 122, 4200, 300, 1950, 4700, '5mt', '235/85R16', '#d8d8c0', { x4: 1 }],
+  ['bandeirante', 'Toyota Bandeirante', 'Off-road', 'boxy', 4.30, 1.68, 1.95, 2.50, 1700, 'a', 'd', 4, 3.7, 90, 3800, 250, 2000, 4200, '4mt', '7.50R16', '#e67e22', { x4: 1 }],
+  ['thar', 'Mahindra Thar', 'Off-road', 'boxy', 3.99, 1.82, 1.85, 2.45, 1750, 'a', 'd', 4, 2.2, 130, 3750, 300, 1600, 4300, '6mt', '255/65R18', '#c0392b', { x4: 1 }],
+  ['niva', 'Lada Niva', 'Off-road', 'boxy', 3.74, 1.68, 1.64, 2.20, 1210, 'a', 'n', 4, 1.7, 83, 5000, 129, 4000, 5600, '5mt', '175/80R16', '#d8d8d8', { x4: 1 }],
+  ['land70', 'Toyota Land Cruiser 300', 'Off-road', 'boxy', 4.98, 1.98, 1.95, 2.85, 2500, 'a', 'd', 6, 3.3, 304, 4000, 700, 1600, 4700, '8at', '265/65R18', '#d8d8d8', { x4: 1 }],
+  ['raptor', 'Ford F-150 Raptor', 'Picape', 'pickup', 5.91, 2.18, 1.99, 3.69, 2700, 'a', 't', 6, 3.5, 450, 5000, 691, 3500, 6200, '8at', '315/70R17', '#2d6ab0', { x4: 1 }],
+  ['rangerr', 'Ford Ranger Raptor', 'Picape', 'pickup', 5.36, 2.03, 1.87, 3.27, 2400, 'a', 'd', 4, 2.0, 210, 3750, 500, 1750, 4800, '8at', '285/70R17', '#e67e22', { x4: 1 }],
+  ['s10', 'Chevrolet S10 2.8 Diesel', 'Picape', 'pickup', 5.39, 1.88, 1.86, 3.09, 2100, 'a', 'd', 4, 2.8, 200, 3600, 500, 2000, 4500, '6at', '265/65R17', '#2c3e50', { x4: 1 }],
+  ['toro', 'Fiat Toro Diesel', 'Picape', 'pickup', 4.91, 1.84, 1.67, 2.99, 1500, 'a', 'd', 4, 2.0, 170, 3750, 350, 1750, 4600, '6at', '225/65R17', '#c0392b'],
+  ['amarok', 'Volkswagen Amarok V6', 'Picape', 'pickup', 5.25, 1.95, 1.83, 3.10, 2150, 'a', 'd', 6, 3.0, 258, 3000, 580, 1500, 4600, '8at', '255/55R20', '#2c3e50'],
+  ['saveiro', 'Volkswagen Saveiro', 'Picape', 'pickup', 4.50, 1.72, 1.55, 2.75, 1100, 'f', 'n', 4, 1.6, 104, 5750, 153, 2500, 6400, '5mt', '195/55R15', '#d8d8d8', { small: 1 }],
+  ['l200', 'Mitsubishi L200 Triton', 'Picape', 'pickup', 5.30, 1.82, 1.78, 3.00, 1950, 'a', 'd', 4, 2.4, 190, 3500, 430, 2500, 4500, '6at', '265/65R17', '#d8d8d8', { x4: 1 }],
+  ['frontier', 'Nissan Frontier', 'Picape', 'pickup', 5.26, 1.85, 1.82, 3.15, 2000, 'a', 'd', 4, 2.3, 190, 3750, 450, 1500, 4600, '8at', '255/60R18', '#7f8c8d', { x4: 1 }],
+  ['silverado', 'Chevrolet Silverado 6.2', 'Picape', 'pickup', 5.89, 2.06, 1.92, 3.75, 2400, 'a', 'n', 8, 6.2, 420, 5600, 624, 4100, 6200, '8at', '275/60R20', '#1f1f22', { x4: 1 }],
+  ['trx', 'Ram 1500 TRX', 'Picape', 'pickup', 5.92, 2.17, 2.03, 3.67, 3000, 'a', 's', 8, 6.2, 702, 6000, 881, 4800, 6300, '8at', '325/65R18', '#c0392b', { x4: 1 }],
+  ['kombi', 'Volkswagen Kombi', 'Clássico', 'van', 4.50, 1.72, 1.95, 2.40, 1150, 'r', 'n', 4, 1.6, 50, 4000, 104, 2600, 4800, '4mt', '185/80R14', '#f1c40f', { rear: 1, boxer: 1 }],
+  ['brasilia', 'Volkswagen Brasília', 'Clássico', 'hatch', 3.99, 1.61, 1.40, 2.40, 900, 'r', 'n', 4, 1.6, 65, 4600, 118, 2600, 5200, '4mt', '165/80R13', '#e67e22', { rear: 1, boxer: 1 }],
+  ['karmann', 'Volkswagen Karmann-Ghia', 'Clássico', 'coupe', 4.14, 1.63, 1.33, 2.40, 820, 'r', 'n', 4, 1.6, 50, 4000, 104, 2600, 4800, '4mt', '165/80R15', '#c0392b', { rear: 1, boxer: 1 }],
+  ['sprinter', 'Mercedes-Benz Sprinter', 'Van', 'van', 5.93, 1.99, 2.57, 3.66, 2200, 'r', 'd', 4, 2.1, 163, 3800, 360, 1400, 4400, '6at', '235/65R16', '#f2f2f2'],
+  ['transit', 'Ford Transit', 'Van', 'van', 5.53, 2.06, 2.50, 3.30, 2100, 'r', 'd', 4, 2.0, 170, 3500, 405, 1750, 4400, '6mt', '235/65R16', '#d8d8d8'],
+];
+
+// ------------------------------------------------------------
+const AR = {
+  hatch: ['hatchgt'], sedan: ['sedan'], muscle: ['muscle'], super: ['supercar'], coupe: ['jdm'], pickup: ['pickup'], boxy: ['jeep'], fast: ['ev'], beetle: ['fusca'],
+  suv: ['hatchgt', { xrr: 0.86, xt: 0.985, roofW: 0.74, tailAtBelt: 1 }], wagon: ['sedan', { xrr: 0.85, xt: 0.985, tailAtBelt: 1 }],
+  kei: ['compacto', { xrr: 0.80, xt: 0.98, belt: [0.93, 0.95], fn: 0.9 }],
+  van: [null, { nt: 0.95, nb: 0.45, hf: 1.0, xc: 0.20, belt: [1.25, 1.3], xrf: 0.27, xrr: 0.97, xt: 0.995, tail: 1.3, tb: 0.5, roofW: 0.92, door: 4, fn: 0.9, fr: 0.97, rnd: 1.0, boxy: true, H: 2.5 }],
+};
+const COOLNAMES = { n: 'aspirado', t: 'turbo', s: 'supercharger', d: 'turbodiesel', e: 'elétrico' };
+const FREQ = { hatch: 1.35, sedan: 1.3, muscle: 1.55, super: 2.1, coupe: 1.7, pickup: 1.2, boxy: 1.15, fast: 1.5, beetle: 1.0, suv: 1.3, wagon: 1.35, van: 1.1, kei: 1.15 };
+const CD = { hatch: 0.32, sedan: 0.29, muscle: 0.35, super: 0.35, coupe: 0.31, pickup: 0.42, boxy: 0.52, fast: 0.25, beetle: 0.48, suv: 0.34, wagon: 0.30, van: 0.38, kei: 0.38 };
+
+function scaledShape(arch, H, L, fo) {
+  const [ref, mod] = AR[arch];
+  const base = ref ? JSON.parse(JSON.stringify(CARS[ref].shape)) : {};
+  const Href = ref ? CARS[ref].H : 1;
+  const sh = Object.assign(base, mod || {});
+  const k = ref ? H / Href : 1;
+  if (ref) { for (const key of ['nt', 'nb', 'hf', 'tail', 'tb']) sh[key] *= k; sh.belt = sh.belt.map(v => v * k); if (sh.bed) sh.bed = [sh.bed[0], sh.bed[1] * k]; }
+  if (mod && mod.belt && ref) sh.belt = mod.belt.map(v => v * k);
+  if (mod && mod.tailAtBelt) sh.tail = sh.belt[1] + 0.02 * k;
+  delete sh.tailAtBelt; delete sh.H;
+  // cowl a ~0,5 m do eixo dianteiro
+  const t = ref ? CARS[ref].shape : sh;
+  const xc = clamp((fo + 0.55) / L, 0.2, 0.42);
+  const d0 = xc - sh.xc;
+  sh.xc = xc;
+  if (ref) { sh.xrf = Math.max(sh.xrf + d0, xc + 0.06); if (sh.xrr <= sh.xrf + 0.05) sh.xrr = sh.xrf + 0.08; }
+  return sh;
+}
+
+function buildEngine(id, r) {
+  const [, , , , , , , , , , kind, cyl, disp, hp, rpmP, nm, rpmT, red] = r;
+  const e = { id, kind: { n: 'na', t: 'turbo', s: 'sc', d: 'diesel', e: 'ev' }[kind], cyl, disp };
+  if (kind === 'e') {
+    Object.assign(e, { name: `Motor elétrico ${hp} kW`, Tmax: nm, Pmax: hp, idle: 0, red, mass: 60 + hp * 0.35, battery: 150 + hp * 1.0, J: 0.03 + hp / 12000, regen: 0.3 });
+  } else {
+    const heavy = kind === 'd' ? 1.35 : 1;
+    Object.assign(e, { name: `${disp.toFixed(1)} ${cyl}cil ${COOLNAMES[kind]} — ${r[3 + 0] ? '' : ''}${hp} cv`.replace(' — ', ' · '),
+      tq: [rpmT, nm], pw: [rpmP, hp], idle: kind === 'd' ? 720 : red > 8000 ? 950 : 800, red, mass: Math.round((disp * 38 + 28) * heavy), J: 0.06 + disp * 0.035, fric: kind === 'd' ? 0.12 : 0.10 });
+    if (kind === 't' || kind === 'd' || kind === 's') {
+      e.tq2 = Math.min(red * 0.85, rpmT + (kind === 'd' ? 1300 : 2200));
+      if (e.tq2 >= rpmP) e.tq2 = Math.max(rpmT + 300, rpmP - 600);
+      e.boost = kind === 's' ? { bar: 0.7, lo: 500, hi: 1200 } : { bar: kind === 'd' ? 1.0 : 0.85, lo: Math.max(1000, rpmT - 1100), hi: rpmT + 300 };
+    }
+    if (rpmT >= rpmP) e.pw = [rpmT + 100, hp];
+  }
+  return e;
+}
+
+export const NEW_CAR_IDS = [];
+for (const r of R) {
+  const [id, name, cls, arch, L, W, H, WB, kg, drv, kind, cyl, disp, hp, rpmP, nm, rpmT, red, gb, tires, color, ex = {}] = r;
+  const e = buildEngine(id, r); ENGINES[id] = e; buildCurve(e);
+  const isEV = kind === 'e';
+  const mid = ex.mid || arch === 'super', rear = ex.rear, front = !mid && !rear;
+  const fo = L * (ex.small ? 0.19 : arch === 'boxy' ? 0.17 : arch === 'van' ? 0.14 : 0.205);
+  const drive = { f: 'fwd', r: 'rwd', a: 'awd' }[drv];
+  const distF = isEV ? 0.48 : mid ? 0.43 : rear ? 0.42 : drive === 'fwd' ? 0.61 : drive === 'awd' ? 0.57 : 0.53;
+  const [tf, tr] = tires.split('|').map(t => { const m = t.match(/(\d+)\/(\d+)R(\d+)/); return m ? [+m[1], +m[2], +m[3]] : [+t.match(/(\d+)R(\d+)/)[1] ? 185 : 185, 80, +t.match(/R(\d+)/)[1]]; });
+  const sh = scaledShape(arch, H, L, fo);
+  const pw = hp * (isEV ? 1.341 : 1) / (kg / 1000);  // cv/t
+  const heavyOff = arch === 'pickup' || arch === 'boxy' || ex.x4;
+  const f = FREQ[arch] * (1 + 0.14 * clamp((pw - 120) / 300, 0, 1)) * (ex.drift ? 1.1 : 1);
+  const mcF = kg * distF / 2, mcR = kg * (1 - distF) / 2, w2 = Math.pow(2 * Math.PI * f, 2);
+  const kF = Math.round(mcF * w2 / 1000), kR = Math.round(mcR * w2 * 1.05 / 1000);
+  const arbF = Math.round(Math.max(0, (f - 0.9) * 28)), arbR = Math.round(arbF * 0.6);
+  const comp = heavyOff ? 'at' : ex.rally ? 'rally' : hp > 450 ? 'sport' : hp > 200 || arch === 'coupe' ? 'sport' : hp < 100 ? 'eco' : 'street';
+  const wheel = arch === 'beetle' || cls === 'Clássico' || cls === 'Compacto' ? 'steel' : heavyOff ? 'beadlock' : isEV || arch === 'super' ? 'turbo' : arch === 'muscle' ? 'six' : hp > 280 ? 'five' : hp > 180 ? 'mesh' : 'ten';
+  const obj = {
+    name, sub: `${cls} · ${hp}${isEV ? ' kW' : ' cv'} · ${Math.round(kg)} kg · inspirado no modelo real`, cls, brand: name.split(' ')[0], nw: true,
+    L, W, H, WB, fo, tF: +(W - 0.26).toFixed(2), tR: +(W - 0.27).toFixed(2), cgH: +(H * (heavyOff ? 0.40 : arch === 'super' ? 0.385 : 0.365)).toFixed(3), mass: kg, distF,
+    engX: mid ? WB * 0.52 : rear ? WB * 1.07 : isEV ? WB * 0.5 : -WB * 0.02, drvX: +(sh.xc * L + 0.8 - fo).toFixed(2),
+    drive, eng: id, gb, fin: 3.9, tf, tr: tr || tf, comp,
+    spr: [kF, kR], arb: [arbF, arbR], damp: [heavyOff ? 0.26 : 0.31, heavyOff ? 0.55 : 0.62], trav: heavyOff ? [0.16, 0.22] : arch === 'super' || ex.drift ? [0.08, 0.10] : [0.10, 0.13],
+    brk: { k: 1.0, bias: mid ? 0.58 : drive === 'fwd' ? 0.68 : 0.63 }, cd: CD[arch] * (isEV ? 0.9 : 1), A: +(0.8 * W * H).toFixed(2),
+    dfF: arch === 'super' ? 0.05 + hp / 4500 : -0.02, dfR: arch === 'super' ? 0.12 + hp / 2500 : ex.wing ? 0.05 : -0.02,
+    steer: 0.60, ack: ex.drift ? 0.6 : 0.9, camber: [arch === 'super' || hp > 300 ? -1.2 : -0.5, arch === 'super' || hp > 300 ? -1.5 : -0.8], toe: [0.05, 0.12],
+    wheel, color, rimColor: hp > 300 ? '#2b2d31' : '#b8bcc4', spoiler: ex.wing || (hp > 350 && arch !== 'pickup' && arch !== 'boxy' ? 'lip' : 'none'),
+    shape: sh,
+  };
+  if (drive === 'awd') { obj.cf = ex.x4 ? 0.0 : ex.cf != null ? ex.cf : 0.4; obj.dc = ex.x4 ? 'locked' : hp > 300 ? 'active' : 'visc'; if (ex.x4) obj.lowRange = true; }
+  if (drive !== 'fwd' && (ex.lsd || hp > 380 || ex.drift)) obj.dir = ex.drift ? 'lsd2' : 'lsd1';
+  if (drive === 'awd' && !ex.x4 && hp > 350) obj.dir = 'lsd1';
+  if (ex.x4) { obj.dif = 'open'; obj.dir = 'locked'; }
+  if (e.rotary || ex.rot) e.rotary = true;
+  if (ex.boxer) e.boxer = true;
+  // relação final calculada a partir da velocidade máxima física
+  const gbx = GEARBOXES[gb], last = gbx.r[gbx.r.length - 1];
+  const cdA = obj.cd * obj.A, Pw = hp * (isEV ? 1000 : HP) * 0.86;
+  let v = 30; for (let i = 0; i < 80; i++) { const need = 0.5 * RHO * cdA * v * v * v + 0.012 * kg * 9.81 * v; v += (Pw - need) / (1.5 * RHO * cdA * v * v + 0.012 * kg * 9.81) * 0.7; }
+  const vcap = (hp > 200 && arch !== 'super' ? 250 : 345) / 3.6;
+  const vt = Math.min(v, vcap, heavyOff && !isEV ? 175 / 3.6 : 999);
+  const td = tireDims(...(tr || tf)); const Rw = (td.R + tireDims(...tf).R) / 2;
+  const rpmTop = (e.red || red) * (isEV ? 0.97 : arch === 'super' || hp > 500 ? 0.97 : 0.92);
+  let fin = (rpmTop * Math.PI / 30 * Rw / vt) / last;
+  fin = isEV ? clamp(fin, 0.4, 2.5) : clamp(fin, 2.4, 5.8);
+  obj.fin = +fin.toFixed(2);
+  CARS[id] = obj; NEW_CAR_IDS.push(id);
+}
