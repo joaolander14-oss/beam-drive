@@ -18,7 +18,7 @@ export function offsetPts(p, off) {
 }
 export const hasSidewalk = r => !r.off && SIDEWALK.has(r.type) && r.w >= 3.5;
 
-function along(pts, step, fn) {
+export function along(pts, step, fn) {
   let acc = step * 0.5, k = 0;
   for (let i = 0; i < pts.length - 1; i++) {
     const [ax, az] = pts[i], [bx, bz] = pts[i + 1], L = Math.hypot(bx - ax, bz - az); if (L < 1e-3) continue;

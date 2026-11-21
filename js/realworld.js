@@ -6,7 +6,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SURF, clamp } from './data.js';
 import { World, Paint, makeTex, rnd } from './world.js';
 import { terrainColor, pineSet } from './maps.js';
-import { addStreetDetails, offsetPts, hasSidewalk } from './streetdecor.js';
+import { addStreetDetails, offsetPts, hasSidewalk, along } from './streetdecor.js';
 
 const DRIVE = { motorway: 7, motorway_link: 5, trunk: 7, trunk_link: 5, primary: 5.5, primary_link: 4, secondary: 5, secondary_link: 4, tertiary: 4.5, tertiary_link: 3.5, residential: 3.8, unclassified: 3.8, living_street: 3.2, service: 2.6, road: 3.5 };
 const OFFROAD = { track: 2.4, path: 1.0, cycleway: 1.3, footway: 1.0, pedestrian: 3.0, steps: 1.0 };
@@ -18,6 +18,29 @@ function inPoly(x, z, p) {
     if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c;
   }
   return c;
+}
+
+// telhado de duas águas (cumeeira ao longo do lado maior) em coordenadas do mundo
+const ROOFC = [[0.62, 0.29, 0.19], [0.55, 0.3, 0.22], [0.48, 0.24, 0.16], [0.42, 0.42, 0.45], [0.66, 0.34, 0.22], [0.36, 0.2, 0.15]];
+function roofGeo(cu, cv, ca, sa, hu, hv, y0, R) {
+  const along = hu >= hv, a = along ? hu : hv, b = along ? hv : hu, o = 0.35, rh = Math.min(2.8, Math.min(a, b) * 0.5);
+  const P = (l, y, m) => { const u = along ? l : m, v = along ? m : l, uu = cu + u, vv = cv + v; return [uu * ca - vv * sa, y, uu * sa + vv * ca]; };
+  const pos = [];
+  const tri = (A, Bv, C, out) => { const e1 = [Bv[0] - A[0], Bv[1] - A[1], Bv[2] - A[2]], e2 = [C[0] - A[0], C[1] - A[1], C[2] - A[2]]; const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]]; if (n[0] * out[0] + n[1] * out[1] + n[2] * out[2] < 0) pos.push(...A, ...C, ...Bv); else pos.push(...A, ...Bv, ...C); };
+  const L1 = a + o, B1 = b + o, y1 = y0 + rh;
+  const e = (l, m) => P(l, y0, m), r = l => P(l, y1, 0);
+  // outward em coordenadas do mundo (aproximado pelo ponto médio relativo ao centro)
+  const ctr = P(0, y0, 0), outv = (pt) => [pt[0] - ctr[0], pt[1] - ctr[1] + 0.3, pt[2] - ctr[2]];
+  const quad = (p1, p2, p3, p4) => { const m = [(p1[0] + p2[0] + p3[0] + p4[0]) / 4, (p1[1] + p2[1] + p3[1] + p4[1]) / 4, (p1[2] + p2[2] + p3[2] + p4[2]) / 4], ov = outv(m); tri(p1, p2, p3, ov); tri(p1, p3, p4, ov); };
+  quad(e(-L1, B1), e(L1, B1), r(L1), r(-L1));
+  quad(e(-L1, -B1), e(L1, -B1), r(L1), r(-L1));
+  tri(e(L1, -B1), e(L1, B1), r(L1), outv(P(L1, y0, 0)));
+  tri(e(-L1, -B1), e(-L1, B1), r(-L1), outv(P(-L1, y0, 0)));
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals();
+  const n = pos.length / 3, c = ROOFC[(R() * ROOFC.length) | 0], arr = new Float32Array(n * 3), uv = new Float32Array(n * 2);
+  for (let i = 0; i < n; i++) { arr[i * 3] = c[0]; arr[i * 3 + 1] = c[1]; arr[i * 3 + 2] = c[2]; }
+  g.setAttribute('color', new THREE.BufferAttribute(arr, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return g;
 }
 
 export function buildRealWorld(D) {
@@ -87,6 +110,31 @@ export function buildRealWorld(D) {
 
   // prédios (malha única por lotes + colisões em caixas orientadas)
   const R = rnd(11), pal = [0xd8d0c4, 0xc8c0b4, 0xb8b4ac, 0xe0d8cc, 0xa8a8a8, 0xc4b8a4, 0xb0a090, 0xd0d4d8];
+  // casas genéricas nos lotes vazios ao longo de ruas residenciais (opção do jogador)
+  let nGen = 0;
+  if (D.opts && D.opts.generic) {
+    const RES = new Set(['residential', 'living_street', 'unclassified']), Rg = rnd(23);
+    const cellOf = (x, z) => { const i = Math.floor((x - x0) / sc), j = Math.floor((z - z0) / sc); return (i < 0 || j < 0 || i >= NS || j >= NS) ? -1 : j * NS + i; };
+    const blocked = (x, z) => { const k = cellOf(x, z); return k < 0 || bmask[k] === 1 || S[k] === 0 || S[k] === 9 || Math.abs(x) > RW / 2 - 6 || Math.abs(z) > RH / 2 - 6; };
+    const mark = pts => { let a = 1e9, b = 1e9, c = -1e9, d = -1e9; for (const [x, z] of pts) { a = Math.min(a, x); c = Math.max(c, x); b = Math.min(b, z); d = Math.max(d, z); } for (let z = b; z <= d; z += sc * 0.5) for (let x = a; x <= c; x += sc * 0.5) if (inPoly(x, z, pts)) { const k = cellOf(x, z); if (k >= 0) { bmask[k] = 1; S[k] = 1; } } };
+    for (const r of D.roads) {
+      if (r.off || !RES.has(r.type) || r.pts.length < 2) continue;
+      along(r.pts, 15, (x, z, tx, tz) => {
+        for (const sg of [-1, 1]) {
+          if (nGen >= 2500) return;
+          const ww = 8 + Rg() * 4, dd = 8.5 + Rg() * 3.5, off = r.w / 2 + 6.4 + dd / 2, nx = -tz * sg, nz = tx * sg, cx = x + nx * off, cz = z + nz * off;
+          const hx = ww / 2, hd = dd / 2;
+          const corner = (a, b) => [cx + tx * a * hx + nx * b * hd, cz + tz * a * hx + nz * b * hd];
+          const pts = [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)];
+          if (blocked(cx, cz) || pts.some(p => blocked(p[0], p[1]))) continue;
+          const mid = [corner(0, -1.3), corner(0, 1.3), corner(-1.3, 0), corner(1.3, 0)];
+          if (mid.some(p => blocked(p[0], p[1]))) continue;
+          D.buildings.push({ pts, h: Rg() < 0.25 ? 6.6 : 3.5 + Rg() * 0.5, gen: true }); mark(pts); nGen++;
+        }
+      });
+    }
+  }
+  D.stats = Object.assign(D.stats || {}, { generic: nGen });
   const key = b => Math.floor(b.pts[0][0] / 110) * 10007 + Math.floor(b.pts[0][1] / 110);
   const blds = D.buildings.slice(0, 20000).sort((a, b) => key(a) - key(b));
   const COLL_R = 420, COLL_MAX = 1600; let ncoll = 0;
@@ -115,14 +163,14 @@ export function buildRealWorld(D) {
       for (let i = 0; i < n; i++) { arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b; }
       g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
       batch.push(g); if (batch.length >= 250) flush();
-      if (ncoll >= COLL_MAX || Math.hypot(pts[0][0], pts[0][1]) > COLL_R) continue;   // longe do centro: só visual, sem colisão
-      ncoll++;
-      // colisão: retângulo orientado pela maior aresta
       let best = 0, ang = 0;
       for (let i = 0; i < pts.length; i++) { const a = pts[i], bb = pts[(i + 1) % pts.length], L = Math.hypot(bb[0] - a[0], bb[1] - a[1]); if (L > best) { best = L; ang = Math.atan2(bb[1] - a[1], bb[0] - a[0]); } }
       const ca = Math.cos(ang), sa = Math.sin(ang); let u0 = 1e9, u1 = -1e9, v0 = 1e9, v1 = -1e9;
       for (const [x, z] of pts) { const u = x * ca + z * sa, v = -x * sa + z * ca; u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
       const cu = (u0 + u1) / 2, cv = (v0 + v1) / 2;
+      if ((u1 - u0) * (v1 - v0) < 420 && H <= 8 && (u1 - u0) > 3 && (v1 - v0) > 3) batch.push(roofGeo(cu, cv, ca, sa, (u1 - u0) / 2, (v1 - v0) / 2, lo - 0.5 + depth, R));
+      if (ncoll >= COLL_MAX || Math.hypot(pts[0][0], pts[0][1]) > COLL_R) continue;   // longe do centro: só visual, sem colisão
+      ncoll++;
       w.addBoxCol(cu * ca - cv * sa, lo + depth / 2 - 0.5, cu * sa + cv * ca, (u1 - u0) / 2, depth / 2, (v1 - v0) / 2, ang);
     } catch (e) { /* polígono inválido */ }
   }
@@ -144,6 +192,6 @@ export function buildRealWorld(D) {
   for (const r of D.roads) { if (r.off || r.pts.length < 2 || r.w < 3.2) continue; for (let i = 0; i < r.pts.length - 1; i++) { const m = [(r.pts[i][0] + r.pts[i + 1][0]) / 2, (r.pts[i][1] + r.pts[i + 1][1]) / 2], d = Math.hypot(m[0], m[1]); if (d < best && Math.hypot(r.pts[i + 1][0] - r.pts[i][0], r.pts[i + 1][1] - r.pts[i][1]) > 8) { best = d; sp = { x: m[0], z: m[1], yaw: -Math.atan2(r.pts[i + 1][1] - r.pts[i][1], r.pts[i + 1][0] - r.pts[i][0]) }; } } }
   w.spawn = sp || { x: 0, z: 0, yaw: 0 };
   w.bx = RW / 2 - 2; w.bz = RH / 2 - 2;
-  w.fogFar = 2200; w.name = 'Mundo Real — ' + (D.name || 'área escolhida');
+  w.fogFar = 2200; w.name = 'Mundo Real — ' + (D.name || 'área escolhida'); w.stats = D.stats;
   return w;
 }

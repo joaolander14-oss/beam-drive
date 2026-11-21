@@ -22,6 +22,8 @@ export async function openRealPicker(app) {
       <button id="rmgo" class="sm">Buscar</button>
       <button id="rmdraw" class="sm">▭ Redesenhar retângulo</button>
       <span id="rminfo" class="hint"></span>
+      <label class="rmopt"><input type="checkbox" id="rmov" checked> casas do Overture Maps</label>
+      <label class="rmopt"><input type="checkbox" id="rmgn" checked> casas genéricas nos lotes vazios</label>
       <button id="rmgen" class="primary">Gerar mapa 3D</button>
       <button id="rmx" class="sm">Cancelar</button>
     </div>
@@ -62,7 +64,7 @@ export async function openRealPicker(app) {
     const b = rect.getBounds(); const [w, h] = dims(b);
     if (w < 150 || h < 150) { stat('Área muito pequena (mínimo ~150 m).'); return; }
     $('#rmgen').disabled = true;
-    try { const D = await fetchRealData({ s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() }, stat, name); stat('Construindo o mapa 3D…'); await new Promise(r => setTimeout(r, 50)); document.removeEventListener('mouseup', end); root.remove(); await app.loadRealMap(D); }
+    try { const D = await fetchRealData({ s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() }, stat, name, { overture: $('#rmov').checked, generic: $('#rmgn').checked }); stat('Construindo o mapa 3D…'); await new Promise(r => setTimeout(r, 50)); document.removeEventListener('mouseup', end); root.remove(); await app.loadRealMap(D); }
     catch (e) { console.error(e); stat('Erro: ' + e.message + ' — tente de novo ou reduza a área.'); $('#rmgen').disabled = false; }
   };
   setTimeout(() => map.invalidateSize(), 100);
@@ -104,7 +106,7 @@ async function loadElevation(b, stat) {
 }
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 
-export async function fetchRealData(b, stat, name) {
+export async function fetchRealData(b, stat, name, opts = {}) {
   const lat0 = (b.s + b.n) / 2, lon0 = (b.w + b.e) / 2, mLat = 110574, mLon = 111320 * Math.cos(lat0 * Math.PI / 180);
   const P = g => [(g.lon - lon0) * mLon, (lat0 - g.lat) * mLat];
   const bb = `${b.s},${b.w},${b.n},${b.e}`;
@@ -131,7 +133,23 @@ export async function fetchRealData(b, stat, name) {
     } else if (t.natural === 'water' && closed) D.waters.push({ poly: true, pts });
     else if (closed) D.greens.push({ pts, kind: t.natural === 'sand' || t.natural === 'beach' ? 'sand' : (t.natural === 'wood' || t.landuse === 'forest') ? 'forest' : 'grass' });
   }
-  stat(`Dados: ${D.roads.length} ruas, ${D.buildings.length} prédios, ${D.trees.length} árvores. Baixando relevo…`);
+  const nOsm = D.buildings.length; let nOv = 0;
+  if (opts.overture !== false) {
+    try {
+      const { fetchOvertureBuildings } = await import('./overture.js');
+      const ov = await fetchOvertureBuildings(b, P, stat);
+      const cell = 60, grid = new Map(), cen = pts => { let x = 0, z = 0; for (const p of pts) { x += p[0]; z += p[1]; } return [x / pts.length, z / pts.length]; };
+      const inP = (x, z, p) => { let c = false; for (let i = 0, j = p.length - 1; i < p.length; j = i++) { const [xi, zi] = p[i], [xj, zj] = p[j]; if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c; } return c; };
+      for (const o of D.buildings) { o.c = cen(o.pts); const k = Math.floor(o.c[0] / cell) + ',' + Math.floor(o.c[1] / cell); (grid.get(k) || grid.set(k, []).get(k)).push(o); }
+      for (const n of ov) {
+        const c = cen(n.pts); let dup = false;
+        for (let dx = -1; dx <= 1 && !dup; dx++) for (let dz = -1; dz <= 1 && !dup; dz++) { const a = grid.get((Math.floor(c[0] / cell) + dx) + ',' + (Math.floor(c[1] / cell) + dz)); if (a) for (const o of a) if (inP(c[0], c[1], o.pts) || inP(o.c[0], o.c[1], n.pts)) { dup = true; break; } }
+        if (!dup) { D.buildings.push(n); nOv++; }
+      }
+    } catch (e) { console.warn('Overture:', e); stat('Overture Maps indisponível agora — seguindo só com OpenStreetMap…'); await new Promise(r => setTimeout(r, 1200)); }
+  }
+  D.opts = opts; D.stats = { osm: nOsm, overture: nOv };
+  stat(`Dados: ${D.roads.length} ruas, ${nOsm} prédios do OpenStreetMap + ${nOv} do Overture, ${D.trees.length} árvores. Baixando relevo…`);
   let elev = null;
   try { elev = await loadElevation(b, stat); } catch (e) { console.warn('relevo:', e); }
   const f = elev || (() => 0);

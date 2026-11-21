@@ -55,3 +55,7 @@ Setas (J/K), pisca-alerta (X), faróis lanterna/baixo/alto (L), neblina (B), lim
 O painel inferior tem as luzes de alerta: motor, temperatura, óleo, bateria, combustível, freio de mão, ABS/TC/ESC, pneus, faróis e setas piscando.
 Combustível/bateria acabam de verdade (Delete abastece). Minimapa em todos os mapas (-/= zoom, U orientação).
 No Mundo Real: faixas de pedestre, semáforos com fases, placas de PARE/preferência/velocidade, postes, calçadas e árvores (só visuais, sem colisão).
+
+### Casas no Mundo Real (Overture Maps + genéricas)
+Onde o OpenStreetMap não tem as casas cadastradas, o jogo completa com os contornos de construções do **Overture Maps** (gratuito, detectados por satélite) e,
+nos lotes ainda vazios ao longo de ruas residenciais, com **casas genéricas** (marcadas como opção no seletor; telhados de duas águas). Casas genéricas não são as reais.
