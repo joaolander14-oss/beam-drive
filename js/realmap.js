@@ -1,5 +1,7 @@
 // Seletor de área (Leaflet + OpenStreetMap) e busca de dados gratuitos (Overpass + elevação AWS Terrain)
-const MAXSIDE = 2000;   // metros
+const MAXSIDE = 30000;   // metros (área total escolhida; só ~2 km ao redor do carro são carregados)
+const WIN = 1000;   // meia-largura da janela carregada (janela de 2 km)
+const STEP = 500;   // as janelas ficam numa grade de 500 m (reaproveita o cache)
 const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
 const cacheQ = new Map();
 let leafletReady;
@@ -21,6 +23,7 @@ export async function openRealPicker(app) {
       <input id="rmq" type="text" placeholder="Buscar lugar (ex.: Avenida Paulista, Monaco, Interlagos…)" />
       <button id="rmgo" class="sm">Buscar</button>
       <button id="rmdraw" class="sm">▭ Redesenhar retângulo</button>
+      <button id="rmpin" class="sm">📍 Ponto de partida</button>
       <span id="rminfo" class="hint"></span>
       <label class="rmopt"><input type="checkbox" id="rmov" checked> casas do Overture Maps</label>
       <label class="rmopt"><input type="checkbox" id="rmgn" checked> casas genéricas nos lotes vazios</label>
@@ -29,7 +32,7 @@ export async function openRealPicker(app) {
       <button id="rmgen" class="primary">Gerar mapa 3D</button>
       <button id="rmx" class="sm">Cancelar</button>
     </div>
-    <div class="rmhelp">Arraste no mapa para desenhar o retângulo da área (máx. ${MAXSIDE / 1000} km de lado). Dados: © OpenStreetMap, elevação AWS Terrain — gratuito, sem chave.</div>
+    <div class="rmhelp">Arraste no mapa para desenhar o retângulo da área (até ${MAXSIDE / 1000} km de lado — o jogo carrega só 2 km ao redor do carro e vai carregando mais conforme você dirige). Clique em <b>📍 Ponto de partida</b> e depois no mapa para escolher onde começar. Dados: © OpenStreetMap, elevação AWS Terrain — gratuito, sem chave.</div>
     <div id="rmmap"></div><div id="rmstat"></div>`;
   document.body.append(root);
   const $ = s => root.querySelector(s), stat = t => { $('#rmstat').textContent = t; $('#rmstat').style.display = t ? 'block' : 'none'; };
@@ -39,11 +42,15 @@ export async function openRealPicker(app) {
   const L = window.L;
   const map = L.map('rmmap', { zoomControl: true }).setView([-23.5614, -46.6559], 15);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
-  let rect = null, drawing = false, a = null, name = 'área escolhida';
+  let rect = null, drawing = false, a = null, name = 'área escolhida', pin = null, pinning = false;
   const dims = b => { const lat0 = (b.getSouth() + b.getNorth()) / 2; return [(b.getEast() - b.getWest()) * 111320 * Math.cos(lat0 * Math.PI / 180), (b.getNorth() - b.getSouth()) * 110574]; };
+  const setPin = ll => { if (pin) pin.setLatLng(ll); else { pin = L.marker(ll, { draggable: true }).addTo(map); } };
+  const centerPin = () => { const b = rect.getBounds(); setPin(b.getCenter()); };
   const show = () => { const [w, h] = dims(rect.getBounds()); $('#rminfo').textContent = `${(w / 1000).toFixed(2)} × ${(h / 1000).toFixed(2)} km`; };
-  const defRect = () => { const c = map.getCenter(), dLat = 450 / 110574, dLon = 450 / (111320 * Math.cos(c.lat * Math.PI / 180)); if (rect) rect.remove(); rect = L.rectangle([[c.lat - dLat, c.lng - dLon], [c.lat + dLat, c.lng + dLon]], { color: '#ff7a1a', weight: 2, fillOpacity: 0.12 }).addTo(map); show(); };
+  const defRect = () => { const c = map.getCenter(), dLat = 2000 / 110574, dLon = 2000 / (111320 * Math.cos(c.lat * Math.PI / 180)); if (rect) rect.remove(); rect = L.rectangle([[c.lat - dLat, c.lng - dLon], [c.lat + dLat, c.lng + dLon]], { color: '#ff7a1a', weight: 2, fillOpacity: 0.12 }).addTo(map); show(); centerPin(); };
   defRect();
+  $('#rmpin').onclick = () => { pinning = true; map.getContainer().style.cursor = 'crosshair'; $('#rminfo').textContent = 'clique no mapa para o ponto de partida'; };
+  map.on('click', e => { if (!pinning) return; pinning = false; map.getContainer().style.cursor = ''; setPin(e.latlng); show(); });
   $('#rmdraw').onclick = () => { drawing = true; map.dragging.disable(); map.getContainer().style.cursor = 'crosshair'; $('#rminfo').textContent = 'arraste no mapa…'; };
   map.on('mousedown', e => { if (!drawing) return; a = e.latlng; if (rect) rect.remove(); rect = L.rectangle([a, a], { color: '#ff7a1a', weight: 2, fillOpacity: 0.12 }).addTo(map); });
   map.on('mousemove', e => {
@@ -54,7 +61,7 @@ export async function openRealPicker(app) {
     if (Math.abs(dz) > MAXSIDE) p = L.latLng(a.lat + Math.sign(dz) * MAXSIDE / 110574, p.lng);
     rect.setBounds([a, p]); show();
   });
-  const end = () => { if (!drawing || !a) return; drawing = false; a = null; map.dragging.enable(); map.getContainer().style.cursor = ''; show(); };
+  const end = () => { if (!drawing || !a) return; drawing = false; a = null; map.dragging.enable(); map.getContainer().style.cursor = ''; show(); centerPin(); };
   map.on('mouseup', end); document.addEventListener('mouseup', end);
   const search = async () => {
     const q = $('#rmq').value.trim(); if (!q) return;
@@ -66,8 +73,11 @@ export async function openRealPicker(app) {
   $('#rmgen').onclick = async () => {
     const b = rect.getBounds(); const [w, h] = dims(b);
     if (w < 150 || h < 150) { stat('Área muito pequena (mínimo ~150 m).'); return; }
+    const st = pin.getLatLng(); if (!b.contains(st)) { stat('O ponto de partida precisa ficar dentro do retângulo.'); return; }
     $('#rmgen').disabled = true;
-    try { const D = await fetchRealData({ s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() }, stat, name, { overture: $('#rmov').checked, generic: $('#rmgn').checked, genericSigns: $('#rmgs').checked }); stat('Construindo o mapa 3D…'); await new Promise(r => setTimeout(r, 50)); document.removeEventListener('mouseup', end); root.remove(); await app.loadRealMap(D); }
+    try { const opts = { overture: $('#rmov').checked, generic: $('#rmgn').checked, genericSigns: $('#rmgs').checked };
+      app.real = { rect: { s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() }, opts, name, lat0: st.lat, lon0: st.lng, mLon: 111320 * Math.cos(st.lat * Math.PI / 180), busy: false };
+      const D = await fetchRealData(windowBounds(st.lat, st.lng), stat, name, opts); stat('Construindo o mapa 3D…'); await new Promise(r => setTimeout(r, 50)); document.removeEventListener('mouseup', end); root.remove(); await app.loadRealMap(D); }
     catch (e) { console.error(e); stat('Erro: ' + e.message + ' — tente de novo ou reduza a área.'); $('#rmgen').disabled = false; }
   };
   setTimeout(() => map.invalidateSize(), 100);
@@ -114,6 +124,32 @@ async function loadElevation(b, stat) {
 }
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 
+export function windowBounds(lat, lon) {
+  const dLat = WIN / 110574, dLon = WIN / (111320 * Math.cos(lat * Math.PI / 180));
+  return { s: lat - dLat, n: lat + dLat, w: lon - dLon, e: lon + dLon };
+}
+
+// carregamento contínuo: quando o carro se afasta do centro da janela de 2 km, carrega a próxima janela e troca
+export function streamTick(app) {
+  const R = app.real, D = app.realData, v = app.veh;
+  if (!R || !D || !D.geo || app.mapId !== 'real' || R.busy || performance.now() < (R.retry || 0)) return;
+  const G = D.geo, x = v.pos.x, z = v.pos.z;
+  if (Math.max(Math.abs(x), Math.abs(z)) < 250) return;
+  const px = x + v.vel.x * 10, pz = z + v.vel.z * 10;
+  const lat = G.lat0 - pz / G.mLat, lon = G.lon0 + px / G.mLon;
+  const gi = Math.round((lon - R.lon0) * R.mLon / STEP), gj = Math.round((lat - R.lat0) * 110574 / STEP);
+  const cLat = R.lat0 + gj * STEP / 110574, cLon = R.lon0 + gi * STEP / R.mLon;
+  if (Math.abs(cLat - G.lat0) < 1e-7 && Math.abs(cLon - G.lon0) < 1e-7) return;
+  const r = R.rect;
+  if (!(cLat > r.s && cLat < r.n && cLon > r.w && cLon < r.e)) { if (!R.edgeToast || performance.now() - R.edgeToast > 20000) { R.edgeToast = performance.now(); app.toast('Limite da área escolhida'); } return; }
+  R.busy = true; app.toast('Carregando a região à frente…', 2500);
+  (async () => {
+    try { const D2 = await fetchRealData(windowBounds(cLat, cLon), () => {}, R.name, R.opts); await app.swapRealWorld(D2); }
+    catch (e) { console.warn('stream:', e); R.retry = performance.now() + 15000; app.toast('Não foi possível carregar a próxima região (tentando de novo)…'); }
+    R.busy = false;
+  })();
+}
+
 export async function fetchRealData(b, stat, name, opts = {}) {
   const lat0 = (b.s + b.n) / 2, lon0 = (b.w + b.e) / 2, mLat = 110574, mLon = 111320 * Math.cos(lat0 * Math.PI / 180);
   const P = g => [(g.lon - lon0) * mLon, (lat0 - g.lat) * mLat];
@@ -156,6 +192,7 @@ export async function fetchRealData(b, stat, name, opts = {}) {
       }
     } catch (e) { console.warn('Overture:', e); stat('Overture Maps indisponível agora — seguindo só com OpenStreetMap…'); await new Promise(r => setTimeout(r, 1200)); }
   }
+  D.geo = { lat0, lon0, mLat, mLon };
   D.opts = opts; D.stats = { osm: nOsm, overture: nOv };
   stat(`Dados: ${D.roads.length} ruas, ${nOsm} prédios do OpenStreetMap + ${nOv} do Overture, ${D.trees.length} árvores. Baixando relevo…`);
   let elev = null;

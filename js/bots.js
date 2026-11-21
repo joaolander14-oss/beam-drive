@@ -22,9 +22,9 @@ function buildNav(w) {
       for (const r of w.navRoads) { let s0 = 0; for (let i = 1; i <= r.pts.length; i++) { if (i === r.pts.length || steep(r.pts[i - 1], r.pts[i])) { if (i - s0 >= 2) out.push(s0 === 0 && i === r.pts.length ? r : { ...r, pts: r.pts.slice(s0, i), ids: r.ids.slice(s0, i) }); s0 = i; } } }
       w.navRoads = out; }
     { const all = w.navRoads, ix = new Map(); all.forEach((r, k) => r.ids.forEach(id => (ix.get(id) || ix.set(id, []).get(id)).push(k)));
-      const comp = new Array(all.length).fill(-1); let nc = 0, bestC = 0, bestN = 0;
-      for (let s0 = 0; s0 < all.length; s0++) { if (comp[s0] >= 0) continue; let cnt = 0; const st = [s0]; comp[s0] = nc; while (st.length) { const k = st.pop(); cnt++; for (const id of all[k].ids) for (const j of ix.get(id)) if (comp[j] < 0) { comp[j] = nc; st.push(j); } } if (cnt > bestN) { bestN = cnt; bestC = nc; } nc++; }
-      w.navRoads = all.filter((r, k) => comp[k] === bestC); }
+      const comp = new Array(all.length).fill(-1), sizes = []; let nc = 0, bestC = 0, bestN = 0;
+      for (let s0 = 0; s0 < all.length; s0++) { if (comp[s0] >= 0) continue; let cnt = 0; const st = [s0]; comp[s0] = nc; while (st.length) { const k = st.pop(); cnt++; for (const id of all[k].ids) for (const j of ix.get(id)) if (comp[j] < 0) { comp[j] = nc; st.push(j); } } sizes[nc] = cnt; if (cnt > bestN) { bestN = cnt; bestC = nc; } nc++; }
+      w.navRoads = all.filter((r, k) => comp[k] === bestC || sizes[comp[k]] >= 4); }
     const vm = new Map(), roads = w.navRoads;
     for (const r of roads) { r.lim = (r.ms || LIMIT[r.type] || 40) / 3.6; r.ids.forEach((id, i) => { if (i < r.pts.length) (vm.get(id) || vm.set(id, []).get(id)).push({ r, i }); }); }
     const grid = new Map(), C = 25;

@@ -124,8 +124,22 @@ App.loadMap = async function (id) {
   App.meas = { t100: null, brake: null, top: 0, latG: 0, run: null, dist: 0 };
 };
 
+App.swapRealWorld = async function (D2) {
+  const old = App.realData, v = App.veh, og = old.geo;
+  const ox = (D2.geo.lon0 - og.lon0) * og.mLon, oz = (og.lat0 - D2.geo.lat0) * og.mLat;   // novo centro no referencial antigo
+  await nextFrame();
+  const w = buildRealWorld(D2);
+  scene.remove(App.world.group); App.world.group.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  App.realData = D2; App.world = w; w.wet = App.opt.wet; scene.add(w.group);
+  if (skid) scene.remove(skid.mesh);
+  skid = new SkidMarks(scene, w);
+  v.world = w; v.pos.x -= ox; v.pos.z -= oz; v.pos.y += old.base - D2.base;
+  App.setWet(App.opt.wet); App.setTime(App.opt.time);
+  App.snapCam = true;
+  traffic.rebuild(w);
+};
 App.openRealPicker = function () { import('./realmap.js').then(m => m.openRealPicker(App)); };
-App.loadRealMap = async function (D) { App.realData = D; await App.loadMap('real'); if (App.menuOpen) App.closeMenu(); toast(D.hasElev ? 'Mundo Real gerado com relevo' : 'Mundo Real gerado (sem relevo: servidor de elevação indisponível)', 3000); };
+App.loadRealMap = async function (D) { App.realData = D; App.rm = await import('./realmap.js'); await App.loadMap('real'); if (App.menuOpen) App.closeMenu(); toast(D.hasElev ? 'Mundo Real gerado com relevo' : 'Mundo Real gerado (sem relevo: servidor de elevação indisponível)', 3000); };
 App.toggleIgnition = function () {
   const v = App.veh;
   if (v.engineOn) { v.engineOn = false; v.cruise = 0; toast('Motor desligado'); return; }
@@ -644,6 +658,7 @@ App.step = function (dt, render = true) {
     updateMeasure(dt * App.opt.timeScale);
   }
   traffic.update(dt, run);
+  if (run && App.rm && App.real && now_() - (App._stT || 0) > 0.5) { App._stT = now_(); App.rm.streamTick(App); }
   if (run && now_() - (App._limT || 0) > 0.4) { App._limT = now_(); App.limit = traffic.limitAt(v.pos.x, v.pos.z); }
   if (run && !App.belt && Math.abs(v.fwdSpeed) > 7 && now_() - (App._beltT || 0) > 9) { App._beltT = now_(); audio.chime(); }
   // luzes

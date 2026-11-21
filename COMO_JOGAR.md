@@ -8,7 +8,7 @@ embreagem, câmbio e diferenciais) e **deformação da lataria** nas batidas.
 - Dê dois cliques em **Jogar.bat** (precisa de Python) — abre `http://localhost:8330`
 - ou: `python serve.py 8330` dentro desta pasta.
 
-## Carros (157 modelos prontos)
+## Carros (234 modelos prontos)
 Inspirados em carros reais — de Fiat Uno e Fusca a Ferrari F40, Porsche 911 GT3, Tesla Model S Plaid, Land Rover Defender, Ford F-150 Raptor, Rimac Nevera…
 Cada um tem ficha técnica própria (massa, motor com curva de torque, câmbio, tração, pneus, suspensão). Há busca e filtro por classe no menu Carros.
 (Nomes de marcas são usados apenas para identificar o modelo que inspirou o carro; o projeto não tem relação com as fabricantes.)
@@ -72,3 +72,6 @@ No Mundo Real, a opção **sinalização genérica** adiciona semáforos, PARE/p
 
 ## Painel do carro e alertas
 Perto do velocímetro há um **painel de botões** com as teclas do carro (faróis, neblina, setas, alerta, limpador, ignição, piloto automático, buzina etc. — todas menos acelerador e freio); clique ou use o teclado. Luzes de alerta: SRS (airbag), cinto (Z), lâmpada queimada, disco de freio quente, líquido, 4x4, limite de velocidade, piloto, RPM, combustível/bateria, motor, óleo, temperatura.
+
+## Mapa grande com carregamento contínuo
+No Mundo Real você desenha uma área grande (até 30 km de lado) e escolhe o **📍 ponto de partida**. O jogo só constrói **2 km ao redor do carro** (ruas, prédios, relevo, sinalização) e, conforme você dirige, carrega e troca para a região seguinte automaticamente (as regiões ficam numa grade de 500 m e usam cache, então voltar é rápido). Os bots só existem nessa janela carregada (~1 km ao redor de você).
