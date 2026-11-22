@@ -92,3 +92,7 @@ O perfil depende do limite de velocidade; a subida (rampa) é bem íngreme nas d
 
 ## Minimapa do Mundo Real
 No Mundo Real o minimapa usa o mesmo mapa do seletor de área (ladrilhos do OpenStreetMap, com nomes de ruas), girando com o carro e com zoom (teclas - / =). Precisa de internet; sem ela, aparece o mapa simplificado de antes.
+
+## Comércios reais e peças que quebram
+- **Comércios (Mundo Real):** lojas, bancos, restaurantes, farmácias, mercados etc. do OpenStreetMap ganham fachada com vitrine, porta, toldo listrado na cor da categoria e letreiro com o **nome real** e um ícone (até 256 por região, os mais próximos do centro). Vêm de prédios marcados como comércio e de pontos de interesse com nome, encaixados na parede que dá para a rua.
+- **Colisão das peças:** asas, splitters, difusores, santo-antônio, estribos/saias, bagageiro de teto e estepe agora têm pontos de colisão próprios (antes só a carroceria batia). Ao bater, a peça mais próxima do impacto **quebra e some**, e o carro perde a aerodinâmica dela (ex.: sem a asa, menos downforce atrás). Consertar (Backspace) recoloca as peças.

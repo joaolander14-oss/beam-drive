@@ -6,6 +6,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SURF, clamp } from './data.js';
 import { World, Paint, makeTex, rnd } from './world.js';
 import { terrainColor, pineSet } from './maps.js';
+import { buildShops } from './shops.js';
 import { addStreetDetails, offsetPts, hasSidewalk, along } from './streetdecor.js';
 
 const DRIVE = { motorway: 7, motorway_link: 5, trunk: 7, trunk_link: 5, primary: 5.5, primary_link: 4, secondary: 5, secondary_link: 4, tertiary: 4.5, tertiary_link: 3.5, residential: 3.8, unclassified: 3.8, living_street: 3.2, service: 2.6, road: 3.5 };
@@ -235,6 +236,7 @@ export function buildRealWorld(D) {
     } catch (e) { /* polígono inválido */ }
   }
   flush();
+  try { w.shopCount = buildShops(w, D, blds); } catch (e) { console.warn('comércios:', e); }
 
   // árvores em áreas verdes
   const trees = [];

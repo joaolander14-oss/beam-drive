@@ -199,6 +199,25 @@ export function buildSpec(cfg) {
       hull.push(new THREE.Vector3(w.x + dx * w.R, w.y, w.z + w.side * (dz > 0.9 ? w.width / 2 + 0.03 : w.width / 2 * 0.2)));
     }
   }
+  // ---- peças externas colidem de verdade: cada uma tem pontos no casco, marcados com o nome da peça (quebram ao bater) ----
+  const hullTag = hull.map(() => null), anchors = {};
+  const PP = cfg.parts || {}, Q = k => PP[k] | 0;
+  const addP = (tag, xm, ym, zs) => { for (const z of zs) { const p = new THREE.Vector3(noseX - xm, ym - car.cgH, z); hull.push(p); hullTag.push(tag); (anchors[tag] || (anchors[tag] = [])).push(p); } };
+  if (!car.bike) {
+    const tailTop = Math.max(sp.bed ? sp.bed[1] : sp.tail, 0.8), Z = f => [-W * f, 0, W * f];
+    const wingH = cfg.wing === 'big' ? 0.46 : cfg.wing === 'gt' ? 0.30 : cfg.wing === 'duck' ? 0.05 : cfg.wing === 'lip' ? 0.02 : 0;
+    if (cfg.wing !== 'none' && cfg.wing !== 'lip') addP('wing', Lm - 0.12, tailTop + wingH, Z(cfg.wing === 'big' ? 0.5 : 0.42));
+    if (Q('wingkit')) addP('wing', Lm - 0.1, tailTop + 0.18 + 0.03 * Q('wingkit'), Z(0.4));
+    if (Q('roofsp')) addP('wing', xr1 - 0.05, car.H + 0.03 * Q('roofsp'), [-W * 0.25, W * 0.25]);
+    if (cfg.splitter !== 'none') addP('split', -0.09, 0.10, Z(cfg.splitter === 'race' ? 0.48 : 0.42));
+    if (Q('splitter2') || Q('frontkit') || Q('canards')) addP('split', -0.07, 0.12, Z(0.42));
+    if (cfg.diffuser || Q('diffuser2') || Q('rearkit')) addP('diff', Lm + 0.04, 0.17, Z(0.34));
+    if (Q('bullbar')) addP('bull', -0.12, 0.5, [-W * 0.32, 0, W * 0.32]);
+    if (Q('skirts') || Q('steps')) for (const f of [0.28, 0.55, 0.8]) addP('skirt', xr0 + (xr1 - xr0) * f, 0.22, [-(W / 2 + 0.04), W / 2 + 0.04]);
+    if (Q('roofacc') > 0 && Q('roofacc') !== 3) addP('roof', (xr0 + xr1) / 2, car.H + 0.16, [-W * 0.3, W * 0.3]);
+    if (Q('spare') === 1 || Q('spare') === 2) addP('spare', Lm + 0.32, sp.tail * 0.65, [0]);
+    if (cfg.widebody || Q('flares')) for (const wl of wheels) hull.push(new THREE.Vector3(wl.x, wl.y + wl.R * 0.6, wl.side * (W / 2 + 0.07))), hullTag.push(null);
+  }
   const boxLow = { c: new THREE.Vector3(noseX - Lm / 2, (clearance + lowTop) / 2 - car.cgH, 0), h: new THREE.Vector3(Lm / 2, (lowTop - clearance) / 2, Wh / 2) };
   const boxCab = car.bike ? { c: new THREE.Vector3(noseX - (xr0 + xr1) / 2, (lowTop + car.H * 0.82) / 2 - car.cgH, 0), h: new THREE.Vector3((xr1 - xr0) / 2 * 0.5, (car.H * 0.82 - lowTop) / 2, 0.18) }
     : { c: new THREE.Vector3(noseX - (xr0 + xr1) / 2, (belt + car.H) / 2 - car.cgH, 0), h: new THREE.Vector3((xr1 - xr0) / 2 * 0.85, (car.H - belt) / 2, sp.roofW * W / 2 * 0.9) };
@@ -209,7 +228,8 @@ export function buildSpec(cfg) {
   const spec = {
     car, cfg, eng: engine, gearInfo: gear, driveline, wheels, mass: M, a, distF, cgH, I,
     cdA, cdAside: cdA * 2.6, clF, clR, WB, L: Lm, W, H: car.H,
-    hull, boxLow, boxCab, noseX, meshOff, driverEye,
+    hull, hullTag, anchors, boxLow, boxCab, noseX, meshOff, driverEye,
+    partAero: { wing: { cl: wing.cl * (0.35 + 1.3 * cfg.wingAng), cd: wing.cd * (0.6 + 0.8 * cfg.wingAng) }, split: { cl: spl.cl, cd: spl.cd }, diff: { cl: cfg.diffuser ? 0.10 : 0, cd: cfg.diffuser ? 0.015 : 0 } },
     bike: !!car.bike, tank: isEV ? (eng.battery || 200) * 0.17 : car.bike ? car.tank : clamp(35 + M / 40, 35, 120), diesel: eng.kind === 'diesel',
     steerMax: car.steer * fx.steer, coolMult: fx.cool, nitroS: fx.nitroS, fx, ack: cfg.ack, rcH: 0.07,
     abs: cfg.abs, tc: cfg.tc, esc: cfg.esc, steerAssist: cfg.steerAssist, trans: cfg.trans,

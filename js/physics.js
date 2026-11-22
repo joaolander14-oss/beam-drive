@@ -63,7 +63,7 @@ export class Vehicle {
     this.tmpA = new Float64Array(25); this.tmpB = new Float64Array(5); this.tmpX = new Float64Array(5);
     this.tf = [0, 0];
     this.obs = [];
-    this.dmg = { engine: 0, rad: 0, body: 0, wheel: [0, 0, 0, 0] };
+    this.dmg = { engine: 0, rad: 0, body: 0, wheel: [0, 0, 0, 0], broken: {} }; this.brokenVer = 0;
     this.localV = V(); this.accL = V(); this.prevVel = V();
     this.stats = { t: 0 };
     this.noReverse = false; this.airbag = false; this.brakeHeat = 0;
@@ -96,7 +96,7 @@ export class Vehicle {
   }
 
   refuel() { this.fuel = this.tank; }
-  dmgReset() { this.dmg = { engine: 0, rad: 0, body: 0, wheel: [0, 0, 0, 0] }; this.temp = 60; this.airbag = false; this.brakeHeat = 0; }
+  dmgReset() { this.dmg = { engine: 0, rad: 0, body: 0, wheel: [0, 0, 0, 0], broken: {} }; this.brokenVer = (this.brokenVer || 0) + 1; this.temp = 60; this.airbag = false; this.brakeHeat = 0; }
 
   reset(x, y, z, yaw) {
     const s = this.spec;
@@ -738,7 +738,8 @@ export class Vehicle {
     const sp = vl.length();
     const fl = t4.set(-0.5 * RHO * s.cdA * sp * vl.x, -0.5 * RHO * s.cdA * 1.4 * sp * vl.y * 0.6, -0.5 * RHO * s.cdAside * sp * vl.z);
     const qd = 0.5 * RHO * vl.x * Math.abs(vl.x);
-    const dfF = s.clF * qd, dfR = s.clR * qd; // downforce (para baixo)
+    let clF = s.clF, clR = s.clR; { const bk = this.dmg.broken, pa = s.partAero; if (pa) { if (bk.wing) clR -= pa.wing.cl; if (bk.split) clF -= pa.split.cl; if (bk.diff) clR -= pa.diff.cl; } }
+    const dfF = clF * qd, dfR = clR * qd; // downforce (para baixo)
     fl.y -= dfF + dfR;
     const Fa = t5.copy(fl).applyQuaternion(this.quat);
     F.add(Fa);
@@ -810,8 +811,10 @@ export class Vehicle {
     const n = s.hull.length;
     if (!this._hp) this._hp = Array.from({ length: n }, () => V());
     for (let i = 0; i < n; i++) this.toWorld(s.hull[i], this._hp[i]);
+    const bk = this.dmg.broken, ht = s.hullTag;
     // chão
     for (let i = 0; i < n; i++) {
+      if (ht && ht[i] && bk[ht[i]]) continue;
       const p = this._hp[i];
       const h = world.heightAt(p.x, p.z);
       if (p.y < h) {
@@ -952,6 +955,10 @@ export class Vehicle {
     const lp = V().copy(p).sub(this.pos).applyQuaternion(q);
     const ln = V().copy(n).applyQuaternion(q);
     this.impacts.push({ p: lp, n: ln, v });
+    { // peças externas quebram: a mais próxima do ponto de impacto
+      const an = this.spec.anchors; if (an) { const thr = { wing: 5, split: 5, diff: 6, skirt: 5, roof: 6, spare: 6, bull: 13 };
+        let bt = null, bd = 0.55; for (const k in an) { if (this.dmg.broken[k]) continue; for (const q of an[k]) { const d = q.distanceTo(lp); if (d < bd) { bd = d; bt = k; } } }
+        if (bt && v > thr[bt]) { this.dmg.broken[bt] = true; this.brokenVer++; this.events.push({ type: 'break', part: bt, p: p.clone(), v }); } } }
     if (v > 12) this.airbag = true;
     this.events.push({ type: 'hit', v, p: p.clone() });
     // dano mecânico
@@ -1116,7 +1123,9 @@ export function vehicleCollide(A, B) {
   if (A.pos.distanceToSquared(B.pos) > 49) return;
   for (const [P, Q] of [[A, B], [B, A]]) {
     const hp = P._hp; if (!hp) continue;
+    const ht = P.spec.hullTag, bk = P.dmg.broken;
     for (let i = 0; i < hp.length; i++) {
+      if (ht && ht[i] && bk[ht[i]]) continue;
       const pen = pointInBoxes(Q, hp[i], _n);
       if (pen > 0) { if (P === A) twoBody(A, B, hp[i], _n, pen); else twoBody(B, A, hp[i], _n, pen); }
     }

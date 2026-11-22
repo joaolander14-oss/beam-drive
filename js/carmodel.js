@@ -351,6 +351,8 @@ function brakeParts(R, rimR, big, hw, color) {
 // ---------------------------------------------------------------
 //  Carro completo
 // ---------------------------------------------------------------
+const PART_TAG = { wingkit: 'wing', roofsp: 'wing', splitter2: 'split', canards: 'split', frontkit: 'split', diffuser2: 'diff', rearkit: 'diff', skirts: 'skirt', steps: 'skirt', bullbar: 'bull', winch: 'bull', tow: 'bull', roofacc: 'roof', spare: 'spare' };
+
 export class CarModel {
   constructor(spec, cfg) {
     this.spec = spec; this.cfg = cfg; this.car = spec.car;
@@ -408,7 +410,7 @@ export class CarModel {
 
   addDet(mesh, parent, keep = true) {
     parent.add(mesh);
-    this.details.push({ mesh, p0: mesh.position.clone(), r0: mesh.rotation.clone(), hidden: false });
+    this.details.push({ mesh, p0: mesh.position.clone(), r0: mesh.rotation.clone(), hidden: false, part: this._tag || null });
     return mesh;
   }
 
@@ -496,14 +498,18 @@ export class CarModel {
         if (big) { const ep = bx(cw * 1.2, 0.2, 0.02, carbon); ep.position.set(xw, wingTop + h, sg * wingW * 0.5); wg.add(ep); }
       }
     }
+    this._tag = 'wing';
     if (wg.children.length) { wg.children.forEach(c => { c.castShadow = true; }); this.addDet(wg, body); }
+    this._tag = 'split';
     if (cfg.splitter !== 'none') {
       const big = cfg.splitter === 'race', mid = cfg.splitter === 'split';
       const sx = mid || big ? 0.20 : 0.12;
       const s = bx(sx, 0.02, W * (big ? 0.97 : 0.9), carbon); s.position.set(sx / 2 - 0.08, 0.10, 0); this.addDet(s, body);
       if (big) for (const sg of [-1, 1]) { const ep = bx(0.3, 0.12, 0.02, carbon); ep.position.set(0.05, 0.13, sg * W * 0.48); this.addDet(ep, body); }
     }
+    this._tag = 'diff';
     if (cfg.diffuser) { for (let i = -3; i <= 3; i++) { const f = bx(0.35, 0.16, 0.012, black); f.position.set(L - 0.18, 0.2, i * 0.15); f.rotation.z = 0.3; this.addDet(f, body); } }
+    this._tag = null;
     if (cfg.scoop) { const sc = bx(0.5, 0.07, 0.4, paintDet); const xs2 = pf.xc * 0.55; sc.position.set(xs2, lowerTop(xs2) + 0.035, 0); this.addDet(sc, body); const sg2 = bx(0.04, 0.06, 0.3, black); sg2.position.set(xs2 - 0.26, lowerTop(xs2) + 0.045, 0); this.addDet(sg2, body); }
     if (cfg.lightbar) {
       const yr = H + 0.025, bar = bx(0.12, 0.07, W * 0.7, black); bar.position.set((pf.xrf + pf.xrr) / 2 - 0.05, yr, 0); this.addDet(bar, body);
@@ -550,7 +556,7 @@ export class CarModel {
     const bx = (w, h, d, m, x, y, z, ry = 0, rz = 0, rx = 0) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.rotation.set(rx, ry, rz); o.castShadow = true; this.addDet(o, body); return o; };
     const cy = (r, h, m, x, y, z, rx = 0, rz = 0, seg = 14) => { const o = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, seg), m); o.position.set(x, y, z); o.rotation.set(rx, 0, rz); o.castShadow = true; this.addDet(o, body); return o; };
     const hoodStrips = (m) => { for (let k = 0; k < 6; k++) { const x = pf.xc * (0.12 + k * 0.15); bx(pf.xc * 0.16, 0.012, W * 0.62, m, x, lt(x) + 0.008, 0); } };
-    { const i = I('hoodstyle'), xh = pf.xc * 0.5, y = lt(xh);
+    { this._tag = PART_TAG.hoodstyle || null; const i = I('hoodstyle'), xh = pf.xc * 0.5, y = lt(xh);
       if (i === 1) { bx(0.7, 0.1, 0.5, paintM, xh, y + 0.05, 0); bx(0.05, 0.06, 0.42, black, xh - 0.35, y + 0.06, 0); }
       if (i === 2) for (const sg of [-1, 1]) { bx(0.34, 0.025, 0.12, black, xh, y + 0.012, sg * 0.28); }
       if (i === 3) hoodStrips(carbon);
@@ -558,7 +564,7 @@ export class CarModel {
       if (i === 5) for (const [dx, dz] of [[-0.3, 0.45], [-0.3, -0.45], [0.3, 0.45], [0.3, -0.45]]) cy(0.012, 0.02, steel, xh + dx, lt(xh + dx) + 0.01, dz);
       if (i === 6) bx(0.9, 0.06, 0.5, paintM, xh, y + 0.03, 0);
       if (i === 7) hoodStrips(M(0x0a0a0a, 0.95, 0)); }
-    { const i = I('roofacc'), xm = (pf.xrf + pf.xrr) / 2, y = H + 0.01, wd = (pf.xrr - pf.xrf);
+    { this._tag = PART_TAG.roofacc || null; const i = I('roofacc'), xm = (pf.xrf + pf.xrr) / 2, y = H + 0.01, wd = (pf.xrr - pf.xrf);
       if (i === 1) { for (const sg of [-1, 1]) bx(wd * 0.9, 0.03, 0.03, black, xm, y + 0.07, sg * W * 0.3); for (let k = 0; k < 3; k++) bx(0.04, 0.03, W * 0.62, black, xm + (k - 1) * wd * 0.35, y + 0.08, 0); }
       if (i === 2) bx(wd * 0.75, 0.2, W * 0.5, black, xm, y + 0.12, 0);
       if (i === 3) bx(0.22, 0.07, 0.02, black, pf.xrr - 0.2, y + 0.03, 0, 0, -0.2);
@@ -566,36 +572,37 @@ export class CarModel {
       if (i === 5) for (const sg of [-1, 1]) bx(wd * 0.8, 0.03, 0.05, steel, xm, y + 0.05, sg * W * 0.12);
       if (i === 6) cy(0.3, 0.1, black, xm, y + 0.1, 0, Math.PI / 2, 0, 20);
       if (i === 7) { for (let k = -2; k <= 2; k++) { const o = cy(0.06, 0.05, lamp, pf.xrf + 0.1, y + 0.06, k * 0.17, 0, 0, 12); o.rotation.z = Math.PI / 2; } } }
-    { const i = I('wingkit'); if (i) { const big = i > 6, xw = L - 0.2 - (i % 3) * 0.04, yw = Math.max(lt(L - 0.3), car.shape.tail) + 0.18 + 0.03 * i;
+    { this._tag = PART_TAG.wingkit || null; const i = I('wingkit'); if (i) { const big = i > 6, xw = L - 0.2 - (i % 3) * 0.04, yw = Math.max(lt(L - 0.3), car.shape.tail) + 0.18 + 0.03 * i;
         bx(0.2 + 0.02 * i, 0.03, W * (0.7 + 0.02 * (i % 6)), carbon, xw, yw, 0, 0, 0.1 + 0.02 * i);
         for (const sg of [-1, 1]) { bx(0.05, Math.max(0.1, yw - lt(xw) + 0.02), 0.03, carbon, xw, (yw + lt(xw)) / 2, sg * W * 0.28); if (big) bx(0.3, 0.2, 0.02, carbon, xw, yw, sg * W * 0.47); }
         if (i === 9) bx(0.14, 0.03, W * 0.7, carbon, xw, yw + 0.12, 0, 0, 0.25); } }
-    { const i = I('splitter2'); if (i) { const d = 0.08 + 0.03 * i; bx(d, 0.02, W * (0.78 + 0.02 * i), carbon, d / 2 - 0.05, 0.1, 0); if (i > 3) for (const sg of [-1, 1]) bx(0.3, 0.1, 0.02, carbon, 0.1, 0.14, sg * W * 0.48); } }
-    { const i = I('diffuser2'); if (i) for (let k = -i - 1; k <= i + 1; k++) bx(0.35, 0.14, 0.01, black, L - 0.18, 0.2, k * (W * 0.4 / (i + 1)), 0, 0.3); }
-    { const i = I('canards'); if (i) for (const sg of [-1, 1]) for (let k = 0; k < i; k++) bx(0.18, 0.012, 0.12, carbon, 0.2 + k * 0.1, 0.3 + k * 0.05, sg * (W * 0.44 - k * 0.03), sg * 0.4); }
-    { const i = I('skirts'); if (i) for (const sg of [-1, 1]) bx(pf.xt - pf.xc * 0.7, 0.05 + 0.012 * i, 0.04 + 0.008 * i, carbon, (pf.xc * 0.7 + pf.xt) / 2 + 0.2, 0.2, sg * (W / 2 - 0.01)); }
-    { const i = I('floor'); if (i) bx(L * 0.7, 0.012, W * 0.7, carbon, L / 2, 0.11, 0); }
-    { const i = I('roofsp'); if (i) bx(0.2, 0.02, W * 0.5, carbon, pf.xrr - 0.05, H - 0.02 + 0.03 * i, 0, 0, 0.25); }
-    { const i = I('louvers'); if (i) for (let k = 0; k < 3 + (i - 1) * 2; k++) bx(0.01, 0.015, W * 0.46, black, pf.xt - 0.2 - k * 0.07, H * 0.8 - k * 0.03, 0, 0, 0.5); }
-    { const i = I('hoodvent'); if (i) { const n = 1 + (i % 3), x0 = pf.xc * 0.5; for (let k = 0; k < n + 1; k++) bx(0.22, 0.025, 0.1, black, x0 + k * 0.1, lt(x0 + k * 0.1) + 0.01, i > 4 ? 0 : (k - n / 2) * 0.25); } }
-    { const i = I('frontkit'); if (i) { bx(0.12, 0.05 + 0.008 * i, W * 0.8, carbon, 0.06, 0.2, 0); for (const sg of [-1, 1]) bx(0.08, 0.1, 0.18, black, 0.1, 0.4, sg * W * 0.34); } }
-    { const i = I('rearkit'); if (i) { bx(0.1, 0.08 + 0.01 * i, W * 0.8, carbon, L - 0.05, 0.25, 0); if (i > 2) for (const sg of [-1, 1]) bx(0.08, 0.1, 0.12, black, L - 0.1, 0.3, sg * W * 0.35); } }
-    { const i = I('flares'); if (i) for (const w of this.wheelsM) for (const sg of [-1, 1]) bx(w.R * 2.3, 0.04 + 0.01 * i, 0.03 + 0.012 * i, carbon, w.x, w.y + w.R * 0.9, sg * (hwid(w.x) + 0.01 + 0.006 * i), 0, 0); }
-    { const i = I('bullbar'); if (i) { for (const sg of [-1, 1]) cy(0.03, 0.55, steel, -0.08, 0.6, sg * W * 0.3, 0, 0); cy(0.03, W * 0.62, steel, -0.1, 0.45 + 0.1 * (i % 2), 0, Math.PI / 2, 0); if (i > 1) bx(0.1, 0.2, W * 0.7, black, -0.04, 0.35, 0); } }
-    { const i = I('winch'); if (i) bx(0.2, 0.14, 0.3, M(0x26282c, 0.4, 0.6), -0.02, 0.38, 0); }
-    { const i = I('snorkel'); if (i) cy(0.05, H * 0.35 + 0.15 * i, black, pf.xc + 0.1, lt(pf.xc) + H * 0.15, W / 2 - 0.02, 0, 0); }
-    { const i = I('spare'); if (i === 1 || i === 2) for (let k = 0; k < i; k++) cy(0.34, 0.2, M(0x161618, 0.9, 0), L + 0.12 + k * 0.22, car.shape.tail * 0.65, 0, 0, Math.PI / 2, 20); }
-    { const i = I('mudflaps'); if (i) for (const w of this.wheelsM) for (const sg of [-1, 1]) bx(0.02, 0.2 + 0.03 * i, 0.2 + 0.03 * i, black, w.x + w.R * 1.05, w.y * 0.5, sg * (hwid(w.x) - 0.1)); }
-    { const i = I('fog'); if (i) for (const sg of [-1, 1]) { if (i < 3) cy(0.06, 0.05, lamp, 0.04, 0.3, sg * W * 0.3, 0, Math.PI / 2, 14); else bx(0.04, 0.06, 0.13, lamp, 0.04, 0.3, sg * W * 0.3); if (i === 4) cy(0.05, 0.05, lamp, 0.04, 0.38, sg * W * 0.12, 0, Math.PI / 2, 12); } }
-    { const i = I('pods'); if (i) { const yy = i === 2 ? lt(pf.xc * 0.6) + 0.06 : i === 3 ? 0.55 : 0.4; for (let k = -1; k <= 1; k += (i === 1 || i === 4) ? 0.5 : 2) bx(0.06, 0.07, 0.13, lamp, i === 2 ? pf.xc * 0.6 : 0.02, yy, k * W * 0.2); } }
-    { const i = I('skid'); if (i) bx(0.7, 0.025, W * 0.5, i === 1 ? alu : i === 2 ? steel : carbon, 0.9, 0.14, 0); }
-    { const i = I('steps'); if (i) for (const sg of [-1, 1]) bx(pf.xt - pf.xc * 0.8, 0.04, 0.12, i === 1 ? steel : black, (pf.xc * 0.8 + pf.xt) / 2 + 0.2, 0.28, sg * (W / 2 + 0.04)); }
-    { const i = I('tow'); if (i) for (const sg of [-1, 1]) { bx(0.04, 0.04, 0.04, steel, i === 2 ? L : -0.01, 0.35, sg * 0.35); if (i === 2) bx(0.15, 0.05, 0.05, steel, L + 0.08, 0.3, 0); } }
+    { this._tag = PART_TAG.splitter2 || null; const i = I('splitter2'); if (i) { const d = 0.08 + 0.03 * i; bx(d, 0.02, W * (0.78 + 0.02 * i), carbon, d / 2 - 0.05, 0.1, 0); if (i > 3) for (const sg of [-1, 1]) bx(0.3, 0.1, 0.02, carbon, 0.1, 0.14, sg * W * 0.48); } }
+    { this._tag = PART_TAG.diffuser2 || null; const i = I('diffuser2'); if (i) for (let k = -i - 1; k <= i + 1; k++) bx(0.35, 0.14, 0.01, black, L - 0.18, 0.2, k * (W * 0.4 / (i + 1)), 0, 0.3); }
+    { this._tag = PART_TAG.canards || null; const i = I('canards'); if (i) for (const sg of [-1, 1]) for (let k = 0; k < i; k++) bx(0.18, 0.012, 0.12, carbon, 0.2 + k * 0.1, 0.3 + k * 0.05, sg * (W * 0.44 - k * 0.03), sg * 0.4); }
+    { this._tag = PART_TAG.skirts || null; const i = I('skirts'); if (i) for (const sg of [-1, 1]) bx(pf.xt - pf.xc * 0.7, 0.05 + 0.012 * i, 0.04 + 0.008 * i, carbon, (pf.xc * 0.7 + pf.xt) / 2 + 0.2, 0.2, sg * (W / 2 - 0.01)); }
+    { this._tag = PART_TAG.floor || null; const i = I('floor'); if (i) bx(L * 0.7, 0.012, W * 0.7, carbon, L / 2, 0.11, 0); }
+    { this._tag = PART_TAG.roofsp || null; const i = I('roofsp'); if (i) bx(0.2, 0.02, W * 0.5, carbon, pf.xrr - 0.05, H - 0.02 + 0.03 * i, 0, 0, 0.25); }
+    { this._tag = PART_TAG.louvers || null; const i = I('louvers'); if (i) for (let k = 0; k < 3 + (i - 1) * 2; k++) bx(0.01, 0.015, W * 0.46, black, pf.xt - 0.2 - k * 0.07, H * 0.8 - k * 0.03, 0, 0, 0.5); }
+    { this._tag = PART_TAG.hoodvent || null; const i = I('hoodvent'); if (i) { const n = 1 + (i % 3), x0 = pf.xc * 0.5; for (let k = 0; k < n + 1; k++) bx(0.22, 0.025, 0.1, black, x0 + k * 0.1, lt(x0 + k * 0.1) + 0.01, i > 4 ? 0 : (k - n / 2) * 0.25); } }
+    { this._tag = PART_TAG.frontkit || null; const i = I('frontkit'); if (i) { bx(0.12, 0.05 + 0.008 * i, W * 0.8, carbon, 0.06, 0.2, 0); for (const sg of [-1, 1]) bx(0.08, 0.1, 0.18, black, 0.1, 0.4, sg * W * 0.34); } }
+    { this._tag = PART_TAG.rearkit || null; const i = I('rearkit'); if (i) { bx(0.1, 0.08 + 0.01 * i, W * 0.8, carbon, L - 0.05, 0.25, 0); if (i > 2) for (const sg of [-1, 1]) bx(0.08, 0.1, 0.12, black, L - 0.1, 0.3, sg * W * 0.35); } }
+    { this._tag = PART_TAG.flares || null; const i = I('flares'); if (i) for (const w of this.wheelsM) for (const sg of [-1, 1]) bx(w.R * 2.3, 0.04 + 0.01 * i, 0.03 + 0.012 * i, carbon, w.x, w.y + w.R * 0.9, sg * (hwid(w.x) + 0.01 + 0.006 * i), 0, 0); }
+    { this._tag = PART_TAG.bullbar || null; const i = I('bullbar'); if (i) { for (const sg of [-1, 1]) cy(0.03, 0.55, steel, -0.08, 0.6, sg * W * 0.3, 0, 0); cy(0.03, W * 0.62, steel, -0.1, 0.45 + 0.1 * (i % 2), 0, Math.PI / 2, 0); if (i > 1) bx(0.1, 0.2, W * 0.7, black, -0.04, 0.35, 0); } }
+    { this._tag = PART_TAG.winch || null; const i = I('winch'); if (i) bx(0.2, 0.14, 0.3, M(0x26282c, 0.4, 0.6), -0.02, 0.38, 0); }
+    { this._tag = PART_TAG.snorkel || null; const i = I('snorkel'); if (i) cy(0.05, H * 0.35 + 0.15 * i, black, pf.xc + 0.1, lt(pf.xc) + H * 0.15, W / 2 - 0.02, 0, 0); }
+    { this._tag = PART_TAG.spare || null; const i = I('spare'); if (i === 1 || i === 2) for (let k = 0; k < i; k++) cy(0.34, 0.2, M(0x161618, 0.9, 0), L + 0.12 + k * 0.22, car.shape.tail * 0.65, 0, 0, Math.PI / 2, 20); }
+    { this._tag = PART_TAG.mudflaps || null; const i = I('mudflaps'); if (i) for (const w of this.wheelsM) for (const sg of [-1, 1]) bx(0.02, 0.2 + 0.03 * i, 0.2 + 0.03 * i, black, w.x + w.R * 1.05, w.y * 0.5, sg * (hwid(w.x) - 0.1)); }
+    { this._tag = PART_TAG.fog || null; const i = I('fog'); if (i) for (const sg of [-1, 1]) { if (i < 3) cy(0.06, 0.05, lamp, 0.04, 0.3, sg * W * 0.3, 0, Math.PI / 2, 14); else bx(0.04, 0.06, 0.13, lamp, 0.04, 0.3, sg * W * 0.3); if (i === 4) cy(0.05, 0.05, lamp, 0.04, 0.38, sg * W * 0.12, 0, Math.PI / 2, 12); } }
+    { this._tag = PART_TAG.pods || null; const i = I('pods'); if (i) { const yy = i === 2 ? lt(pf.xc * 0.6) + 0.06 : i === 3 ? 0.55 : 0.4; for (let k = -1; k <= 1; k += (i === 1 || i === 4) ? 0.5 : 2) bx(0.06, 0.07, 0.13, lamp, i === 2 ? pf.xc * 0.6 : 0.02, yy, k * W * 0.2); } }
+    { this._tag = PART_TAG.skid || null; const i = I('skid'); if (i) bx(0.7, 0.025, W * 0.5, i === 1 ? alu : i === 2 ? steel : carbon, 0.9, 0.14, 0); }
+    { this._tag = PART_TAG.steps || null; const i = I('steps'); if (i) for (const sg of [-1, 1]) bx(pf.xt - pf.xc * 0.8, 0.04, 0.12, i === 1 ? steel : black, (pf.xc * 0.8 + pf.xt) / 2 + 0.2, 0.28, sg * (W / 2 + 0.04)); }
+    { this._tag = PART_TAG.tow || null; const i = I('tow'); if (i) for (const sg of [-1, 1]) { bx(0.04, 0.04, 0.04, steel, i === 2 ? L : -0.01, 0.35, sg * 0.35); if (i === 2) bx(0.15, 0.05, 0.05, steel, L + 0.08, 0.3, 0); } }
     { const m = CATS.mirrors.opts[I('mirrors')]; if (m && m.v) for (const d of this.details) if (d.mesh.material === this.paintDet && d.mesh.geometry.parameters && d.mesh.geometry.parameters.width === 0.075) d.mesh.material = M(new THREE.Color(m.v), 0.3, 0.5); }
     { const g = CATS.glow.opts[I('glow')]; if (g && g.v) { this.glow = g.v; const pl = new THREE.PointLight(g.v === 'rainbow' || g.v === 'pulse' ? 0x30a0ff : g.v, 14, 7, 1.6); pl.position.set(spec.noseX - L * 0.5, -spec.cgH + 0.15, 0); this.root.add(pl); this.glowLight = pl;
         const gm = new THREE.Mesh(new THREE.PlaneGeometry(L * 0.9, W * 0.85), new THREE.MeshBasicMaterial({ color: pl.color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false })); gm.rotation.x = -Math.PI / 2; gm.position.set(spec.noseX - L * 0.5, -spec.cgH + 0.1, 0); this.root.add(gm); this.glowMesh = gm; } }
     { const h = CATS.headlight.opts[I('headlight')]; if (h) { this.lensMat.color.set(h.v); this.lensMat.emissive.set(h.v); this._beamCol = h.s; }
       const t = CATS.taillight.opts[I('taillight')]; if (t) { this.tailMat.emissive.set(t.v); this.tailMat.color.set(t.v).multiplyScalar(0.5); } }
+    this._tag = null;
   }
 
   addInterior(body, pf) {
@@ -728,12 +735,14 @@ export class CarModel {
   repair() {
     this.low.reset(); this.gh.reset();
     for (const d of this.details) { d.mesh.position.copy(d.p0); d.mesh.rotation.copy(d.r0); d.mesh.visible = true; d.acc = 0; d.hidden = false; }
+    this._bv = -1;
   }
 
   // ---- animação por frame ----
   update(v, dt, extras) {
     this.root.position.copy(v.pos); this.root.quaternion.copy(v.quat);
     const spec = this.spec;
+    if (this._bv !== v.brokenVer) { this._bv = v.brokenVer; const bk = v.dmg.broken || {}; for (const d of this.details) if (d.part) { const gone = !!bk[d.part]; d.mesh.visible = !gone && !d.hidden; d.partGone = gone; } }
     for (let i = 0; i < 4; i++) {
       const h = v.wh[i], w = spec.wheels[i], n = this.wheelNodes[i];
       n.root.position.set(w.x, w.mountL.y - h.s, w.z);
