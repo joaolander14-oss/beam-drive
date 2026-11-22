@@ -755,8 +755,8 @@ export class Vehicle {
     // dinâmica angular
     const Tloc = t6.copy(T).applyQuaternion(q);
     const wl = t7.copy(this.w).applyQuaternion(q);
-    const Iw = V(s.I.x * wl.x, s.I.y * wl.y, s.I.z * wl.z);
-    const gyro = V().copy(wl).cross(Iw);
+    const Iw = (this._Iw || (this._Iw = V())).set(s.I.x * wl.x, s.I.y * wl.y, s.I.z * wl.z);
+    const gyro = (this._gy || (this._gy = V())).copy(wl).cross(Iw);
     Tloc.sub(gyro);
     Tloc.set(Tloc.x * this.Iinv.x, Tloc.y * this.Iinv.y, Tloc.z * this.Iinv.z).applyQuaternion(this.quat);
     this.w.addScaledVector(Tloc, dt);
@@ -765,7 +765,7 @@ export class Vehicle {
     this.holdAtRest(dt);
     this.pos.addScaledVector(this.vel, dt);
     // quaternion
-    const wq = new THREE.Quaternion(this.w.x * dt * 0.5, this.w.y * dt * 0.5, this.w.z * dt * 0.5, 0).multiply(this.quat);
+    const wq = (this._wq || (this._wq = new THREE.Quaternion())).set(this.w.x * dt * 0.5, this.w.y * dt * 0.5, this.w.z * dt * 0.5, 0).multiply(this.quat);
     this.quat.set(this.quat.x + wq.x, this.quat.y + wq.y, this.quat.z + wq.z, this.quat.w + wq.w).normalize();
   }
 
@@ -812,10 +812,13 @@ export class Vehicle {
     if (!this._hp) this._hp = Array.from({ length: n }, () => V());
     for (let i = 0; i < n; i++) this.toWorld(s.hull[i], this._hp[i]);
     const bk = this.dmg.broken, ht = s.hullTag;
-    // chão
+    // chão: teto de altura do terreno sob o carro (5 amostras); pontos bem acima disso nem consultam o terreno
+    let gmax = world.heightAt(this.pos.x, this.pos.z);
+    { const hl = s.L * 0.5, hwid = s.W * 0.5, ax = this.ax, az = this.az; for (const [dx, dz] of [[hl, hwid], [hl, -hwid], [-hl, hwid], [-hl, -hwid]]) { const hh = world.heightAt(this.pos.x + ax.x * dx + az.x * dz, this.pos.z + ax.z * dx + az.z * dz); if (hh > gmax) gmax = hh; } gmax += 0.25; }
     for (let i = 0; i < n; i++) {
       if (ht && ht[i] && bk[ht[i]]) continue;
       const p = this._hp[i];
+      if (p.y > gmax) continue;
       const h = world.heightAt(p.x, p.z);
       if (p.y < h) {
         world.normalAt(p.x, p.z, t2);

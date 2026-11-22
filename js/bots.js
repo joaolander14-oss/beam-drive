@@ -45,7 +45,18 @@ const LIVE_R = 1000, YAW = v => Math.atan2(-v.ax.z, v.ax.x);
 export class Traffic {
   constructor(app) { this.app = app; this.bots = []; this.recs = []; this.nav = null; this.acc = 0; this.count = 0; this.hyT = 0; }
 
-  rebuild(world, keep = false) {
+  rebuild(world, keep = false, shift = null) {
+    if (keep && shift) {
+      // troca de região: os bots já carregados continuam carregados, na mesma posição e velocidade (só muda a origem do mapa)
+      this.world = world; this.nav = buildNav(world);
+      for (const r of this.recs) { r.x -= shift[0]; r.z -= shift[1]; }
+      const old = this.bots; this.bots = [];
+      for (const b of old) {
+        b.v.world = world; const r = b.rec;
+        if (this.inWin(r) && this.placeAt(b, r.x, r.z, r.yaw, r.sp, true)) this.bots.push(b); else this.dispose(b);
+      }
+      this.ensure(); this.hydrate(true); return;
+    }
     this.clearLive(); this.world = world; this.nav = buildNav(world);
     if (!keep) this.recs = [];
     this.ensure(); this.hydrate(true);
@@ -133,22 +144,26 @@ export class Traffic {
   }
 
   // coloca o bot numa posição guardada, ligando-o à via mais próxima na direção em que estava indo
-  placeAt(b, x, z, yaw, sp0 = 6) {
+  placeAt(b, x, z, yaw, sp0 = 6, keepDmg = false) {
     const n = this.nav, w = this.world, hx = Math.cos(yaw), hz = -Math.sin(yaw); let state = null, tx = hx, tz = hz;
     if (n.kind === 'graph') {
-      let bd = 64, bq = null; const cx = Math.floor(x / n.C), cz = Math.floor(z / n.C);
-      for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) { const a = n.grid.get((cx + i) * 20011 + (cz + j)); if (a) for (const q of a) { const d = (q[0] - x) ** 2 + (q[1] - z) ** 2; if (d < bd) { bd = d; bq = q; } } }
-      if (!bq) return false;
-      const r = bq[2], i = bq[3]; let best = -9, dir = 1;
-      for (const d of (r.oneway ? [1] : [1, -1])) { const c = r.pts[i + d]; if (!c) continue; const L = Math.hypot(c[0] - bq[0], c[1] - bq[1]) || 1, dot = ((c[0] - bq[0]) * hx + (c[1] - bq[1]) * hz) / L; if (dot > best) { best = dot; dir = d; } }
-      if (best === -9) return false;
+      // via mais próxima: testa os SEGMENTOS dos vértices vizinhos (não só os vértices), até 10 m de distância
+      let bd = 100, br = null, bk = 0; const cx = Math.floor(x / n.C), cz = Math.floor(z / n.C), seen = new Set();
+      for (let i = -3; i <= 3; i++) for (let j = -3; j <= 3; j++) { const a = n.grid.get((cx + i) * 20011 + (cz + j)); if (!a) continue;
+        for (const q of a) { const r = q[2]; for (const k of [q[3] - 1, q[3]]) { if (k < 0 || k >= r.pts.length - 1) continue; const id = r.ids[k] + '/' + r.ids[k + 1] + '/' + (r.name || ''); if (seen.has(r) && seen.has(id)) continue; seen.add(r); seen.add(id);
+            const p0 = r.pts[k], p1 = r.pts[k + 1], sx = p1[0] - p0[0], sz = p1[1] - p0[1], L2 = sx * sx + sz * sz || 1, t = Math.max(0, Math.min(1, ((x - p0[0]) * sx + (z - p0[1]) * sz) / L2)), d = (p0[0] + sx * t - x) ** 2 + (p0[1] + sz * t - z) ** 2;
+            if (d < bd) { bd = d; br = r; bk = k; } } } }
+      if (!br) return false;
+      const r = br, p0 = r.pts[bk], p1 = r.pts[bk + 1], dotF = ((p1[0] - p0[0]) * hx + (p1[1] - p0[1]) * hz);
+      let dir = dotF >= 0 ? 1 : -1; if (r.oneway) dir = 1;
+      const i = dir === 1 ? bk : bk + 1;
       state = { r, i, dir };
     } else {
       let bd = 900, bk = -1; n.loop.forEach((q, k) => { const d = (q.x - x) ** 2 + (q.z - z) ** 2; if (d < bd) { bd = d; bk = k; } });
       if (bk < 0) return false; state = { k: bk };
     }
     const y = w.heightAt(x, z) + b.spec.cgH + 0.1;
-    b.v.reset(x, y, z, yaw); b.v.dmgReset(); b.model.repair();
+    const dm = keepDmg ? b.v.dmg : null; b.v.reset(x, y, z, yaw); if (!keepDmg) { b.v.dmgReset(); b.model.repair(); } else b.v.dmg = dm;
     b.cur = state; b.pts = []; b.pi = 0; b.raw = []; b.done = undefined; b.dead = false; b.cleared.clear(); b.stuckT = 0; b.flipT = 0; b.waitT = 0; b.offT = 0;
     b.v.vel.set(tx * sp0, 0, tz * sp0); for (const h of b.v.wh) h.omega = sp0 / h.w.R;
     this.extend(b, true);

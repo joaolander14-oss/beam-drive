@@ -491,10 +491,12 @@ export class CarModel {
     if (w === 'lip') { const m = bx(0.12, 0.035, W * 0.78, carbon); m.position.set(wx0, wingTop + 0.015, 0); m.rotation.z = -0.1; wg.add(m); }
     else if (w === 'duck') { const m = bx(0.2, 0.03, W * 0.8, carbon); m.position.set(wx0 + 0.05, wingTop + 0.04, 0); m.rotation.z = 0.28; wg.add(m); }
     else if (w === 'gt' || w === 'big') {
-      const big = w === 'big', h = big ? 0.46 : 0.30, xw = wx0 - (big ? 0.0 : 0.0) + (hatch ? 0.12 : 0), cw = big ? 0.34 : 0.26;
-      const plane = bx(cw, 0.035, wingW * (big ? 1.0 : 0.95), carbon); plane.position.set(xw, wingTop + h, 0); plane.rotation.z = big ? 0.12 : 0.05; wg.add(plane);
+      const big = w === 'big', h = big ? 0.46 : 0.30, xw = wx0 + (hatch ? 0.02 : 0), cw = big ? 0.34 : 0.26;
+      // as hastes descem até a superfície real da carroceria (tampa/porta-malas), não ficam no ar
+      const surf = hatch ? Math.min(wingTop, pf.roofTop(Math.min(xw, pf.xt - 0.03)) - 0.03) : lowerTop(Math.min(xw, L - 0.06)) - 0.02, yTop = wingTop + h;
+      const plane = bx(cw, 0.035, wingW * (big ? 1.0 : 0.95), carbon); plane.position.set(xw, yTop, 0); plane.rotation.z = big ? 0.12 : 0.05; wg.add(plane);
       for (const sg of [-1, 1]) {
-        const up = bx(0.07, h, 0.035, carbon); up.position.set(xw, wingTop + h / 2, sg * wingW * 0.3); wg.add(up);
+        const up = bx(0.07, yTop - surf, 0.035, carbon); up.position.set(xw, (yTop + surf) / 2, sg * wingW * 0.3); wg.add(up);
         if (big) { const ep = bx(cw * 1.2, 0.2, 0.02, carbon); ep.position.set(xw, wingTop + h, sg * wingW * 0.5); wg.add(ep); }
       }
     }
@@ -504,8 +506,11 @@ export class CarModel {
     if (cfg.splitter !== 'none') {
       const big = cfg.splitter === 'race', mid = cfg.splitter === 'split';
       const sx = mid || big ? 0.20 : 0.12;
-      const s = bx(sx, 0.02, W * (big ? 0.97 : 0.9), carbon); s.position.set(sx / 2 - 0.08, 0.10, 0); this.addDet(s, body);
-      if (big) for (const sg of [-1, 1]) { const ep = bx(0.3, 0.12, 0.02, carbon); ep.position.set(0.05, 0.13, sg * W * 0.48); this.addDet(ep, body); }
+      // o splitter acompanha o para-choque real: começa no ponto mais avançado da parte baixa da carroceria
+      let xf = 1e9; { const R0 = this.low.rest; for (let v = 0; v < this.low.nv; v++) { const y = R0[v * 3 + 1]; if (y > 0.12 && y < 0.34 && R0[v * 3] < xf) xf = R0[v * 3]; } if (!isFinite(xf) || xf > 0.6) xf = 0; }
+      const s = bx(sx, 0.02, W * (big ? 0.97 : 0.9), carbon); s.position.set(xf + sx / 2 - 0.03, 0.11, 0); this.addDet(s, body);
+      const lipUp = bx(0.035, 0.24, W * (big ? 0.95 : 0.88), carbon); lipUp.position.set(xf + 0.02, 0.22, 0); this.addDet(lipUp, body);   // aba que liga o splitter ao para-choque
+      if (big) for (const sg of [-1, 1]) { const ep = bx(0.3, 0.12, 0.02, carbon); ep.position.set(xf + 0.12, 0.13, sg * W * 0.48); this.addDet(ep, body); }
     }
     this._tag = 'diff';
     if (cfg.diffuser) { for (let i = -3; i <= 3; i++) { const f = bx(0.35, 0.16, 0.012, black); f.position.set(L - 0.18, 0.2, i * 0.15); f.rotation.z = 0.3; this.addDet(f, body); } }

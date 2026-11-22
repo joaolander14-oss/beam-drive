@@ -172,10 +172,9 @@ App.swapRealWorld = async function (D2) {
   if (skid) scene.remove(skid.mesh);
   skid = new SkidMarks(scene, w);
   v.world = w; v.pos.x -= ox; v.pos.z -= oz; v.pos.y += old.base - D2.base;
-  traffic.shift(ox, oz);
   App.setWet(App.opt.wet); App.setTime(App.opt.time);
   App.snapCam = true;
-  traffic.rebuild(w, true);
+  traffic.rebuild(w, true, [ox, oz]);
 };
 App.openRealPicker = function () { import('./realmap.js').then(m => m.openRealPicker(App)); };
 App.loadRealMap = async function (D) { App.realData = D; App.rm = await import('./realmap.js'); await App.loadMap('real'); if (App.menuOpen) App.closeMenu(); toast(D.hasElev ? 'Mundo Real gerado com relevo' : 'Mundo Real gerado (sem relevo: servidor de elevação indisponível)', 3000); };

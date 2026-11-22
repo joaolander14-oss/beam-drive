@@ -211,10 +211,18 @@ export class World {
     const a = H[iz * W + ix], b = H[iz * W + ix + 1], c = H[(iz + 1) * W + ix], d = H[(iz + 1) * W + ix + 1];
     return a + (b - a) * fx + (c - a) * fz + (a - b - c + d) * fx * fz;
   }
+  // índice espacial das "features" (lombadas, rampas...): heightAt só avalia as que cobrem o ponto (mantendo a ordem de aplicação)
+  _featIndex() {
+    const F = this.feat, C = 24, g = new Map();
+    for (let i = 0; i < F.length; i++) { const f = F[i]; for (let a = Math.floor(f.x0 / C); a <= Math.floor(f.x1 / C); a++) for (let b = Math.floor(f.z0 / C); b <= Math.floor(f.z1 / C); b++) { const k = a * 100003 + b; (g.get(k) || g.set(k, []).get(k)).push(f); } }
+    this._fg = g; this._fgN = F.length; this._fgC = C;
+  }
   heightAt(x, z) {
     let h = this.rawHeight(x, z);
-    const F = this.feat;
-    for (let i = 0; i < F.length; i++) { const f = F[i]; if (x > f.x0 && x < f.x1 && z > f.z0 && z < f.z1) h = f.fn(x, z, h); }
+    const F = this.feat; if (!F.length) return h;
+    if (this._fgN !== F.length) this._featIndex();
+    const l = this._fg.get(Math.floor(x / this._fgC) * 100003 + Math.floor(z / this._fgC));
+    if (l) for (let i = 0; i < l.length; i++) { const f = l[i]; if (x > f.x0 && x < f.x1 && z > f.z0 && z < f.z1) h = f.fn(x, z, h); }
     return h;
   }
   normalAt(x, z, out) {

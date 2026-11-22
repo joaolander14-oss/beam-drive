@@ -209,7 +209,7 @@ export function buildSpec(cfg) {
     if (cfg.wing !== 'none' && cfg.wing !== 'lip') addP('wing', Lm - 0.12, tailTop + wingH, Z(cfg.wing === 'big' ? 0.5 : 0.42));
     if (Q('wingkit')) addP('wing', Lm - 0.1, tailTop + 0.18 + 0.03 * Q('wingkit'), Z(0.4));
     if (Q('roofsp')) addP('wing', xr1 - 0.05, car.H + 0.03 * Q('roofsp'), [-W * 0.25, W * 0.25]);
-    if (cfg.splitter !== 'none') addP('split', -0.09, 0.10, Z(cfg.splitter === 'race' ? 0.48 : 0.42));
+    if (cfg.splitter !== 'none') addP('split', -0.05, 0.12, Z(cfg.splitter === 'race' ? 0.48 : 0.42));
     if (Q('splitter2') || Q('frontkit') || Q('canards')) addP('split', -0.07, 0.12, Z(0.42));
     if (cfg.diffuser || Q('diffuser2') || Q('rearkit')) addP('diff', Lm + 0.04, 0.17, Z(0.34));
     if (Q('bullbar')) addP('bull', -0.12, 0.5, [-W * 0.32, 0, W * 0.32]);

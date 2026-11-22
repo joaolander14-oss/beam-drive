@@ -109,3 +109,8 @@ Bots a até 300 m aparecem como o carro completo; entre 300 m e 1 km aparecem co
 
 ## Carregamento do mapa em alta velocidade
 O jogo pré-carrega, uma de cada vez, as regiões à frente na direção da viagem (até ~2,5 km) e as 8 vizinhas, então a troca de região só precisa montar o mapa. Se você chegar ao fim do mapa carregado antes de a próxima região ficar pronta, o carro **desacelera suavemente** com o aviso "Carregando a próxima região do mapa…" em vez de bater numa parede invisível.
+
+## Bots na troca de região e otimizações internas
+- **Troca de região:** os bots que já estavam carregados continuam carregados e renderizados, na mesma posição e velocidade (só muda a origem do mapa); os parados continuam guardados no lugar.
+- **Asa e splitter:** as hastes da asa descem até a carroceria e o splitter ganhou uma aba que o liga ao para-choque (antes pareciam soltos).
+- **Otimização de sistemas (sem mexer em configuração):** o terreno agora consulta só as lombadas/rampas da região (índice espacial) em vez de testar todas a cada ponto; o chão só é consultado para os pontos do casco que realmente podem encostar nele; menos alocações de memória por passo de física.
