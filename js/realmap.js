@@ -126,15 +126,23 @@ const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 
 // pré-carrega (só no cache) a próxima região na direção em que o carro anda, para a troca ser instantânea
 const warm = new Set();
+// pré-carrega no cache as regiões vizinhas e as que estão à frente na direção da viagem (uma de cada vez),
+// para a troca de região ser só "montar o mapa" (poucos segundos) em vez de esperar o download
 function prefetchAhead(app, R, D, v, spd) {
-  if (spd < 8 || R.warming) return;
-  const G = D.geo, px = v.pos.x + v.vel.x * 30, pz = v.pos.z + v.vel.z * 30;
-  const lat = G.lat0 - pz / G.mLat, lon = G.lon0 + px / G.mLon, gi = Math.round((lon - R.lon0) * R.mLon / STEP), gj = Math.round((lat - R.lat0) * 110574 / STEP);
-  const cLat = R.lat0 + gj * STEP / 110574, cLon = R.lon0 + gi * STEP / R.mLon, key = gi + ',' + gj;
-  if ((Math.abs(cLat - G.lat0) < 1e-7 && Math.abs(cLon - G.lon0) < 1e-7) || warm.has(key)) return;
-  const r = R.rect; if (!(cLat > r.s && cLat < r.n && cLon > r.w && cLon < r.e)) return;
-  warm.add(key); R.warming = true;
-  fetchRealData(windowBounds(cLat, cLon), () => {}, R.name, R.opts).catch(() => warm.delete(key)).finally(() => { R.warming = false; });
+  if (R.warming || R.busy) return;
+  const G = D.geo, key = (gi, gj) => gi + ',' + gj;
+  const cur = [Math.round((G.lon0 - R.lon0) * R.mLon / STEP), Math.round((G.lat0 - R.lat0) * 110574 / STEP)];
+  const cand = [];
+  if (spd > 3) { const hx = v.vel.x / spd, hz = v.vel.z / spd; for (const d of [500, 1000, 1500, 2000, 2500]) { const px = v.pos.x + hx * d, pz = v.pos.z + hz * d, lat = G.lat0 - pz / G.mLat, lon = G.lon0 + px / G.mLon; cand.push([Math.round((lon - R.lon0) * R.mLon / STEP), Math.round((lat - R.lat0) * 110574 / STEP)]); } }
+  for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) cand.push([cur[0] + di, cur[1] + dj]);
+  for (const [gi, gj] of cand) {
+    const k = key(gi, gj); if (warm.has(k) || (gi === cur[0] && gj === cur[1])) continue;
+    const cLat = R.lat0 + gj * STEP / 110574, cLon = R.lon0 + gi * STEP / R.mLon, r = R.rect;
+    if (!(cLat > r.s && cLat < r.n && cLon > r.w && cLon < r.e)) { warm.add(k); continue; }
+    warm.add(k); R.warming = true;
+    fetchRealData(windowBounds(cLat, cLon), () => {}, R.name, R.opts).catch(() => warm.delete(k)).finally(() => { R.warming = false; });
+    return;
+  }
 }
 
 export function windowBounds(lat, lon) {
@@ -148,7 +156,8 @@ export function streamTick(app) {
   if (!R || !D || !D.geo || app.mapId !== 'real' || R.busy || performance.now() < (R.retry || 0)) return;
   const G = D.geo, x = v.pos.x, z = v.pos.z;
   const spd = Math.hypot(v.vel.x, v.vel.z), trig = spd > 20 ? 120 : spd > 10 ? 190 : 250;
-  if (Math.max(Math.abs(x), Math.abs(z)) < trig) { prefetchAhead(app, R, D, v, spd); return; }
+  prefetchAhead(app, R, D, v, spd);
+  if (Math.max(Math.abs(x), Math.abs(z)) < trig) return;
   const px = x + v.vel.x * (spd > 20 ? 14 : 10), pz = z + v.vel.z * (spd > 20 ? 14 : 10);
   const lat = G.lat0 - pz / G.mLat, lon = G.lon0 + px / G.mLon;
   const gi = Math.round((lon - R.lon0) * R.mLon / STEP), gj = Math.round((lat - R.lat0) * 110574 / STEP);

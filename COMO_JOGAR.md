@@ -106,3 +106,6 @@ No Mundo Real o minimapa usa o mesmo mapa do seletor de área (ladrilhos do Open
 
 ## Bots (distância e limite)
 Bots a até 300 m aparecem como o carro completo; entre 300 m e 1 km aparecem como carros simplificados **na cor da pintura** (antes ficavam escuros). O limite de bots ativos ao mesmo tempo subiu (Mínimo 14, Baixo 22, Médio 34, Alto 44, Ultra 60; dá para escolher até 80 em Opções).
+
+## Carregamento do mapa em alta velocidade
+O jogo pré-carrega, uma de cada vez, as regiões à frente na direção da viagem (até ~2,5 km) e as 8 vizinhas, então a troca de região só precisa montar o mapa. Se você chegar ao fim do mapa carregado antes de a próxima região ficar pronta, o carro **desacelera suavemente** com o aviso "Carregando a próxima região do mapa…" em vez de bater numa parede invisível.

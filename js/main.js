@@ -716,6 +716,8 @@ App.step = function (dt, render = true) {
     let n = 0;
     while (App.acc >= DT && n < 40) { v.step(DT); traffic.step(DT, v, App.simStep++); App.acc -= DT; App.simTime += DT; n++; }
     if (n === 40) App.acc = 0;
+    // fim do mapa carregado: se a próxima região ainda não chegou, o carro desacelera suavemente (em vez de bater numa parede)
+    if (App.mapId === 'real' && App.real) { const e = Math.max(Math.abs(v.pos.x), Math.abs(v.pos.z)) - ((w.bx || 1000) - 220); if (e > 0 && (App.real.busy || performance.now() < (App.real.retry || 0))) { const f = clamp(e / 180, 0, 1); v.vel.multiplyScalar(Math.max(0, 1 - f * 2.2 * dt)); if (now_() - (App._edgeT || 0) > 3) { App._edgeT = now_(); toast('Carregando a próxima região do mapa…', 3000); } } }
     w.updateProps(dt * App.opt.timeScale, v);
     if (w.anim) w.anim(performance.now() / 1000);
     emitFx(dt);
