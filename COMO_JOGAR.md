@@ -89,3 +89,6 @@ No Mundo Real você desenha uma área grande (até 30 km de lado) e escolhe o **
 
 ## Lombadas por velocidade da via
 O perfil depende do limite de velocidade; a subida (rampa) é bem íngreme nas de baixa velocidade: **20 km/h** = 1,1 m × 14 cm (rampa de 28 cm); **30** = 1,8 m × 12 cm; **40** = 3 m × 10 cm; **50** = 4,8 m × 9 cm; **60/70 km/h** = mesas longas e suaves (8–12 m). No teste de física com um hatch: a de 20 km/h dá um tranco de ~1,1 g; a de 70 km/h, ~0,3 g. Valem para as lombadas reais do OpenStreetMap e, com "sinalização genérica", são distribuídas pelas ruas.
+
+## Minimapa do Mundo Real
+No Mundo Real o minimapa usa o mesmo mapa do seletor de área (ladrilhos do OpenStreetMap, com nomes de ruas), girando com o carro e com zoom (teclas - / =). Precisa de internet; sem ela, aparece o mapa simplificado de antes.

@@ -630,6 +630,27 @@ function buildMinimap(w) {
   }
   g.putImageData(img, 0, 0); return c;
 }
+// ---- minimapa do Mundo Real: ladrilhos do OpenStreetMap (os mesmos do seletor de área) ----
+const osmTiles = new Map();
+function osmTile(z, x, y) {
+  const k = z + '/' + x + '/' + y; let t = osmTiles.get(k);
+  if (!t) { if (osmTiles.size > 300) osmTiles.delete(osmTiles.keys().next().value); t = new Image(); t.crossOrigin = 'anonymous'; t.onload = () => { t.ok = true; }; t.onerror = () => { t.err = true; }; t.src = `https://tile.openstreetmap.org/${z}/${x}/${y}.png`; osmTiles.set(k, t); }
+  return t;
+}
+function drawOsmTiles(v, R) {
+  const G = App.realData.geo, mz = App.miniZoom;
+  const lat = G.lat0 - v.pos.z / G.mLat, lon = G.lon0 + v.pos.x / G.mLon;
+  const z = clamp(Math.round(Math.log2(156543.03 * Math.cos(lat * Math.PI / 180) * mz)), 13, 19), n = 2 ** z;
+  const tx = l => (l + 180) / 360 * n, ty = l => (1 - Math.asinh(Math.tan(l * Math.PI / 180)) / Math.PI) / 2 * n;
+  const lonT = X => X / n * 360 - 180, latT = Y => Math.atan(Math.sinh(Math.PI * (1 - 2 * Y / n))) * 180 / Math.PI;
+  const rad = R / mz * 1.05, dLat = rad / G.mLat, dLon = rad / G.mLon;
+  const x0 = Math.floor(tx(lon - dLon)), x1 = Math.floor(tx(lon + dLon)), y0 = Math.floor(ty(lat + dLat)), y1 = Math.floor(ty(lat - dLat));
+  for (let Y = y0; Y <= y1; Y++) for (let X = x0; X <= x1; X++) {
+    const t = osmTile(z, ((X % n) + n) % n, Y); if (!t.ok) continue;
+    const wx0 = (lonT(X) - G.lon0) * G.mLon, wz0 = (G.lat0 - latT(Y)) * G.mLat, wx1 = (lonT(X + 1) - G.lon0) * G.mLon, wz1 = (G.lat0 - latT(Y + 1)) * G.mLat;
+    hx.drawImage(t, (wx0 - v.pos.x) * mz, (wz0 - v.pos.z) * mz, (wx1 - wx0) * mz + 0.6, (wz1 - wz0) * mz + 0.6);
+  }
+}
 function drawMinimap(u) {
   const w = App.world; if (!w || !w.S) return;
   const v = App.veh; if (!w._mini) w._mini = buildMinimap(w);
@@ -640,7 +661,9 @@ function drawMinimap(u) {
   hx.translate(cx, cy); hx.rotate(rot);
   const hs = R / k;
   hx.drawImage(w._mini, px - hs, py - hs, 2 * hs, 2 * hs, -R, -R, 2 * R, 2 * R);
+  if (App.mapId === 'real' && App.realData && App.realData.geo) drawOsmTiles(v, R);   // Mundo Real: o mesmo mapa (OpenStreetMap) do seletor
   hx.restore();
+  if (App.mapId === 'real') { hx.fillStyle = 'rgba(255,255,255,.75)'; hx.font = `${8 * u}px Segoe UI`; hx.textAlign = 'center'; hx.fillText('© OpenStreetMap', cx, cy + R - 5 * u); }
   hx.lineWidth = 3 * u; hx.strokeStyle = 'rgba(10,14,24,.9)'; hx.beginPath(); hx.arc(cx, cy, R, 0, 7); hx.stroke();
   hx.lineWidth = 1.5 * u; hx.strokeStyle = '#46567f'; hx.beginPath(); hx.arc(cx, cy, R - 1.5 * u, 0, 7); hx.stroke();
   for (const bt of traffic.recs) {
