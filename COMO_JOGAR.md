@@ -103,3 +103,6 @@ No Mundo Real o minimapa usa o mesmo mapa do seletor de área (ladrilhos do Open
 - **Relevo nas rodovias:** rodovias e vias principais seguem o relevo (suavização leve e inclinação máxima por tipo: 7,5 % em autoestradas, 10 % nas principais); só as ruas urbanas ficam bem niveladas.
 - **Lombadas nas rodovias:** mesas longas e suaves (18 m) de vez em quando nas vias de 80 km/h ou mais.
 - **Paredes invisíveis:** prédios não criam mais colisão em cima de pistas (viadutos/túneis/ruas dentro de quarteirões). A troca de região agora antecipa mais em alta velocidade e pré-carrega a região à frente.
+
+## Bots (distância e limite)
+Bots a até 300 m aparecem como o carro completo; entre 300 m e 1 km aparecem como carros simplificados **na cor da pintura** (antes ficavam escuros). O limite de bots ativos ao mesmo tempo subiu (Mínimo 14, Baixo 22, Médio 34, Alto 44, Ultra 60; dá para escolher até 80 em Opções).

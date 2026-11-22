@@ -54,7 +54,7 @@ export class Traffic {
   sync() { for (const b of this.bots) this.saveRec(b); }
   saveRec(b) { const r = b.rec, v = b.v; if (!r || !isFinite(v.pos.x)) return; r.x = v.pos.x; r.z = v.pos.z; r.yaw = YAW(v); r.sp = Math.max(0, v.fwdSpeed); }
   shift(ox, oz) { for (const r of this.recs) { r.x -= ox; r.z -= oz; } }
-  dispose(b) { this.app.scene.remove(b.model.root); b.model.dispose(); if (b.proxy) { this.app.scene.remove(b.proxy); b.proxy.children[0].material.dispose(); b.proxy.children.forEach(c => c.geometry.dispose()); } if (b.rec) b.rec.live = null; }
+  dispose(b) { this.app.scene.remove(b.model.root); b.model.dispose(); if (b.proxy) { this.app.scene.remove(b.proxy); b.proxy.children.forEach(c => { c.material.dispose(); c.geometry.dispose(); }); } if (b.rec) b.rec.live = null; }
   clearLive() { for (const b of this.bots) { this.saveRec(b); this.dispose(b); } this.bots = []; }
   clear() { this.clearLive(); this.recs = []; }
 
@@ -123,8 +123,8 @@ export class Traffic {
     const model = new CarModel(spec, cfg); this.app.scene.add(model.root);
     // versão simples (caixa) usada quando o carro está longe: poucos triângulos
     const bl = spec.boxLow, bc = spec.boxCab, proxy = new THREE.Group();
-    const pm = new THREE.MeshStandardMaterial({ color: rec.paint, roughness: 0.5, metalness: 0.3 });
-    for (const bx of [bl, bc]) { const m = new THREE.Mesh(new THREE.BoxGeometry(bx.h.x * 2, bx.h.y * 2, bx.h.z * 2), pm); m.position.set(bx.c.x, bx.c.y, bx.c.z); proxy.add(m); }
+    const pc = new THREE.Color(rec.paint), pm = new THREE.MeshLambertMaterial({ color: pc, emissive: pc.clone().multiplyScalar(0.28) }), gm = new THREE.MeshLambertMaterial({ color: 0x5a6a7a, emissive: 0x151b22 });
+    [[bl, pm], [bc, gm]].forEach(([bx, mt]) => { const m = new THREE.Mesh(new THREE.BoxGeometry(bx.h.x * 2, bx.h.y * 2, bx.h.z * 2), mt); m.position.set(bx.c.x, bx.c.y, bx.c.z); proxy.add(m); });
     proxy.visible = false; this.app.scene.add(proxy);
     const b = { v, model, proxy, cfg, spec, rec, pts: [], pi: 0, cur: null, cleared: new Map(), waitT: 0, stuckT: 0, flipT: 0, sig: 0, steer: 0, hold: false, speedLim: 12, age: 0 };
     if (!this.placeAt(b, rec.x, rec.z, rec.yaw, rec.sp)) { this.dispose(b); return null; }
@@ -323,7 +323,7 @@ export class Traffic {
       b.v.events.length = 0;
       for (const im of b.v.impacts) b.model.dentLocal(im.p, im.n, im.v);
       b.v.impacts.length = 0;
-      const dd = Math.hypot(b.v.pos.x - P.x, b.v.pos.z - P.z), near = dd < 150;
+      const dd = Math.hypot(b.v.pos.x - P.x, b.v.pos.z - P.z), near = dd < 300;
       b.model.root.visible = near; b.proxy.visible = !near && dd < vd;
       if (!near) { b.proxy.position.copy(b.v.pos); b.proxy.quaternion.copy(b.v.quat); continue; }
       b.model.update(b.v, dt, { lights: app.lightMode > 0, mode: app.night ? 2 : 0, brake: b.v.pedalBrk > 0.05, sigL: b.sig === 1, sigR: b.sig === 2, blink, wipers: 0 });

@@ -195,7 +195,7 @@ export class UI {
     row('Distância de visão', sel([[0.35, 'Muito curta'], [0.5, 'Curta'], [0.75, 'Média'], [1, 'Longa'], [1.3, 'Muito longa']], G.view, v => gset('view', +v)));
     row('Detalhe do terreno à distância', sel([[2.2, 'Mínimo'], [1.6, 'Baixo'], [1.2, 'Médio'], [0.9, 'Alto'], [0.65, 'Máximo']].map(x => [1 / x[0], x[1]]).map(x => [x[0].toFixed(3), x[1]]), (1 / G.lod).toFixed(3), v => gset('lod', 1 / +v)));
     row('Densidade de objetos (árvores…)', sel([[0.3, '30%'], [0.5, '50%'], [0.8, '80%'], [1, '100%'], [1.2, '120%']], G.detail, v => gset('detail', +v)));
-    row('Carros de bots ativos ao mesmo tempo', sel([[8, '8'], [14, '14'], [20, '20'], [28, '28'], [36, '36']], G.live, v => gset('live', +v)));
+    row('Carros de bots ativos ao mesmo tempo', sel([[14, '14'], [22, '22'], [34, '34'], [44, '44'], [60, '60'], [80, '80']], G.live, v => gset('live', +v)));
     row('Limite de FPS', sel([[0, 'Sem limite'], [30, '30'], [60, '60'], [120, '120']], G.cap, v => gset('cap', +v)));
     chk('aa', 'Suavização de bordas (AA)', ' — vale ao recarregar a página');
     grid.append(el('div', 'hint', 'Densidade de objetos vale no próximo mapa gerado. Dica: com pouco FPS use o preset Baixo ou Mínimo.'), el('span'));

@@ -33,15 +33,15 @@ window.BD = App;
 
 // ---------------- opções gráficas (salvas no navegador) ----------------
 const GFX_PRESETS = {
-  min:   { name: 'Mínimo',  res: 0.6, shadow: 0, view: 0.35, lod: 2.2, detail: 0.3, live: 8,  dyn: true,  cap: 60, aa: false },
-  low:   { name: 'Baixo',   res: 0.75, shadow: 1, view: 0.5, lod: 1.6, detail: 0.5, live: 14, dyn: true,  cap: 60, aa: false },
-  mid:   { name: 'Médio',   res: 1,   shadow: 2, view: 0.75, lod: 1.2, detail: 0.8, live: 20, dyn: true,  cap: 0,  aa: true },
-  high:  { name: 'Alto',    res: 1.25, shadow: 3, view: 1,  lod: 0.9, detail: 1,   live: 28, dyn: false, cap: 0,  aa: true },
-  ultra: { name: 'Ultra',   res: 1.5, shadow: 3, view: 1.3, lod: 0.65, detail: 1.2, live: 36, dyn: false, cap: 0,  aa: true },
+  min:   { name: 'Mínimo',  res: 0.6, shadow: 0, view: 0.35, lod: 2.2, detail: 0.3, live: 14, dyn: true,  cap: 60, aa: false },
+  low:   { name: 'Baixo',   res: 0.75, shadow: 1, view: 0.5, lod: 1.6, detail: 0.5, live: 22, dyn: true,  cap: 60, aa: false },
+  mid:   { name: 'Médio',   res: 1,   shadow: 2, view: 0.75, lod: 1.2, detail: 0.8, live: 34, dyn: true,  cap: 0,  aa: true },
+  high:  { name: 'Alto',    res: 1.25, shadow: 3, view: 1,  lod: 0.9, detail: 1,   live: 44, dyn: false, cap: 0,  aa: true },
+  ultra: { name: 'Ultra',   res: 1.5, shadow: 3, view: 1.3, lod: 0.65, detail: 1.2, live: 60, dyn: false, cap: 0,  aa: true },
 };
 App.GFX_PRESETS = GFX_PRESETS;
 App.gfx = { preset: 'mid', ...GFX_PRESETS.mid };
-try { const s = JSON.parse(localStorage.getItem('bd_gfx') || 'null'); if (s) Object.assign(App.gfx, s); } catch (e) { /* sem armazenamento */ }
+try { const s = JSON.parse(localStorage.getItem('bd_gfx') || 'null'); if (s) { if (GFX_PRESETS[s.preset]) Object.assign(App.gfx, GFX_PRESETS[s.preset], { preset: s.preset }); else Object.assign(App.gfx, s); } } catch (e) { /* sem armazenamento */ }
 App.dynRes = 1;
 
 // ---------------- renderer, cena ----------------
