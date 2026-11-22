@@ -703,8 +703,17 @@ function frame(now) {
   requestAnimationFrame(frame);
   if (App.gfx.cap && now - last < 1000 / App.gfx.cap - 2) return;
   let dt = Math.min(0.05, (now - last) / 1000); last = now;
-  App.step(dt);
+  try { App.step(dt); } catch (e) { if (!App._serr || now - App._serr > 5000) { App._serr = now; console.error('step:', e); } }
 }
+
+// volta à aba/janela: zera o relógio, solta teclas presas, recompõe a tela e recupera o contexto WebGL se tiver sido perdido
+function resumeGame() { last = performance.now(); App.acc = 0; App.keys = {}; try { onResize(); } catch (e) { /* ok */ } App.snapCam = true; if (App.veh && App.veh.in) { App.veh.in.thr = App.veh.in.brk = 0; } }
+document.addEventListener('visibilitychange', () => { if (!document.hidden) resumeGame(); else App.keys = {}; });
+addEventListener('blur', () => { App.keys = {}; });
+addEventListener('focus', resumeGame);
+addEventListener('pageshow', resumeGame);
+canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); App.glLost = true; });
+canvas.addEventListener('webglcontextrestored', () => { App.glLost = false; resumeGame(); try { App.setTime(App.opt.time); App.setShadows(App.gfx.shadow); } catch (e) { /* ok */ } });
 App.step = function (dt, render = true) {
   const v = App.veh, w = App.world;
   if (!w) return;
@@ -746,14 +755,15 @@ App.step = function (dt, render = true) {
     // áudio
     const E = v.spec.eng;
     audio.update({ paused: App.menuOpen || App.paused, rpm: v.rpm, thr: v.thrEff, ev: E.kind === 'ev', cyl: E.cyl || 4, kind: E.kind, rotary: E.def.rotary, boost: E.bar > 0 ? v.fill * (v.pedalThr > 0.3 ? 1 : 0.4) : 0, squeal: App.squeal || 0, speed: v.speed, rough: App.rough, limiter: v.cutT > 0 });
-    renderer.render(scene, camera);
-    drawHud();
+    if (!App.glLost) { try { renderer.render(scene, camera); } catch (e) { if (!App._rerr) { App._rerr = 1; console.error('render:', e); } } }
+    try { drawHud(); } catch (e) { if (!App._herr) { App._herr = 1; console.error('hud:', e); } }
     frames++; fpsT += dt; if (fpsT > 1) { App.fps = Math.round(frames / fpsT); frames = 0; fpsT = 0; }
     // resolução dinâmica: ajusta a escala de renderização para manter ~55 fps
     if (App.gfx.dyn && run) { App._ft = (App._ft || 16) * 0.95 + dt * 1000 * 0.05; if (now_() - (App._dynT || 0) > 1.2) { App._dynT = now_(); const t = App._ft; let d = App.dynRes; if (t > 19.5) d = Math.max(0.55, d - 0.1); else if (t < 14.5) d = Math.min(1, d + 0.05); if (Math.abs(d - App.dynRes) > 0.01) { App.dynRes = d; applyPixel(); } } }
   }
 };
 function onResize() {
+  if (innerWidth < 2 || innerHeight < 2) return;   // janela minimizada/oculta: não zera a tela nem o HUD
   renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); resizeHud();
 }
 addEventListener('resize', onResize);

@@ -114,3 +114,6 @@ O jogo pré-carrega, uma de cada vez, as regiões à frente na direção da viag
 - **Troca de região:** os bots que já estavam carregados continuam carregados e renderizados, na mesma posição e velocidade (só muda a origem do mapa); os parados continuam guardados no lugar.
 - **Asa e splitter:** as hastes da asa descem até a carroceria e o splitter ganhou uma aba que o liga ao para-choque (antes pareciam soltos).
 - **Otimização de sistemas (sem mexer em configuração):** o terreno agora consulta só as lombadas/rampas da região (índice espacial) em vez de testar todas a cada ponto; o chão só é consultado para os pontos do casco que realmente podem encostar nele; menos alocações de memória por passo de física.
+
+## Voltar para o jogo (aba/janela)
+Ao voltar para a aba ou janela, o jogo reinicia o relógio, solta teclas que ficaram "presas", recompõe a tela/HUD e recupera o WebGL caso o navegador o tenha perdido; erros isolados não derrubam mais o HUD nem o controle, e uma janela minimizada (tamanho 0) não zera a tela.
