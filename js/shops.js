@@ -64,9 +64,9 @@ export function buildShops(w, D, blds) {
   list.forEach((s, i) => {
     const c = i % COLS, r = (i / COLS) | 0, x0 = c * CW, y0 = r * CH, [lab, col, ico] = s.cat, name = (s.name || lab).slice(0, 34);
     g.fillStyle = '#f4f4f4'; g.fillRect(x0, y0, CW, CH); g.fillStyle = col; g.fillRect(x0 + 3, y0 + 3, CW - 6, CH - 6);
-    g.fillStyle = '#fff'; g.textBaseline = 'middle'; g.textAlign = 'left'; g.font = 'bold 34px "Segoe UI Emoji","Segoe UI",Arial'; g.fillText(ico, x0 + 10, y0 + CH / 2 + 2);
-    let sz = 30; g.font = `bold ${sz}px "Segoe UI",Arial`; while (g.measureText(name).width > CW - 90 && sz > 12) { sz -= 2; g.font = `bold ${sz}px "Segoe UI",Arial`; }
-    g.textAlign = 'center'; g.fillText(name.toUpperCase(), x0 + 52 + (CW - 62) / 2, y0 + CH / 2 + 2);
+    g.fillStyle = '#fff'; g.textBaseline = 'middle';
+    let sz = 30; g.font = `bold ${sz}px "Segoe UI",Arial`; while (g.measureText(name).width > CW - 24 && sz > 12) { sz -= 2; g.font = `bold ${sz}px "Segoe UI",Arial`; }
+    g.textAlign = 'center'; g.fillText(name.toUpperCase(), x0 + CW / 2, y0 + CH / 2 + 2);
   });
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
 

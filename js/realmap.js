@@ -124,6 +124,19 @@ async function loadElevation(b, stat) {
 }
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 
+// pré-carrega (só no cache) a próxima região na direção em que o carro anda, para a troca ser instantânea
+const warm = new Set();
+function prefetchAhead(app, R, D, v, spd) {
+  if (spd < 8 || R.warming) return;
+  const G = D.geo, px = v.pos.x + v.vel.x * 30, pz = v.pos.z + v.vel.z * 30;
+  const lat = G.lat0 - pz / G.mLat, lon = G.lon0 + px / G.mLon, gi = Math.round((lon - R.lon0) * R.mLon / STEP), gj = Math.round((lat - R.lat0) * 110574 / STEP);
+  const cLat = R.lat0 + gj * STEP / 110574, cLon = R.lon0 + gi * STEP / R.mLon, key = gi + ',' + gj;
+  if ((Math.abs(cLat - G.lat0) < 1e-7 && Math.abs(cLon - G.lon0) < 1e-7) || warm.has(key)) return;
+  const r = R.rect; if (!(cLat > r.s && cLat < r.n && cLon > r.w && cLon < r.e)) return;
+  warm.add(key); R.warming = true;
+  fetchRealData(windowBounds(cLat, cLon), () => {}, R.name, R.opts).catch(() => warm.delete(key)).finally(() => { R.warming = false; });
+}
+
 export function windowBounds(lat, lon) {
   const dLat = WIN / 110574, dLon = WIN / (111320 * Math.cos(lat * Math.PI / 180));
   return { s: lat - dLat, n: lat + dLat, w: lon - dLon, e: lon + dLon };
@@ -134,8 +147,9 @@ export function streamTick(app) {
   const R = app.real, D = app.realData, v = app.veh;
   if (!R || !D || !D.geo || app.mapId !== 'real' || R.busy || performance.now() < (R.retry || 0)) return;
   const G = D.geo, x = v.pos.x, z = v.pos.z;
-  if (Math.max(Math.abs(x), Math.abs(z)) < 250) return;
-  const px = x + v.vel.x * 10, pz = z + v.vel.z * 10;
+  const spd = Math.hypot(v.vel.x, v.vel.z), trig = spd > 20 ? 120 : spd > 10 ? 190 : 250;
+  if (Math.max(Math.abs(x), Math.abs(z)) < trig) { prefetchAhead(app, R, D, v, spd); return; }
+  const px = x + v.vel.x * (spd > 20 ? 14 : 10), pz = z + v.vel.z * (spd > 20 ? 14 : 10);
   const lat = G.lat0 - pz / G.mLat, lon = G.lon0 + px / G.mLon;
   const gi = Math.round((lon - R.lon0) * R.mLon / STEP), gj = Math.round((lat - R.lat0) * 110574 / STEP);
   const cLat = R.lat0 + gj * STEP / 110574, cLon = R.lon0 + gi * STEP / R.mLon;
@@ -171,7 +185,13 @@ export async function fetchRealData(b, stat, name, opts = {}) {
     if (el.type !== 'way' || !el.geometry || el.geometry.length < 2) continue;
     const t = el.tags || {}, pts = el.geometry.map(P), closed = el.geometry.length > 3 && el.nodes && el.nodes[0] === el.nodes[el.nodes.length - 1];
     if (t.highway) {
-      if (DRIVEW[t.highway]) { let w = DRIVEW[t.highway]; if (t.width && !isNaN(parseFloat(t.width))) w = clamp(parseFloat(t.width), 2.2, 20); else if (t.lanes) w = clamp(+t.lanes * 3.2, 3, 20); D.roads.push({ type: t.highway, w, pts, ids: el.nodes, name: t.name || t.ref || '', ms: parseInt(t.maxspeed) || 0, oneway: t.oneway === 'yes' || t.oneway === '1' }); }
+      if (DRIVEW[t.highway]) {
+        const big = t.highway === 'motorway' || t.highway === 'trunk', ow = t.oneway === 'yes' || t.oneway === '1' || ((t.highway === 'motorway' || t.junction === 'roundabout') && t.oneway !== 'no');
+        let ln = parseInt(t.lanes) || 0, w = DRIVEW[t.highway];
+        if (!ln && (big || t.highway === 'primary')) ln = ow ? 2 : (big ? 4 : 2);                       // padrão: rodovias de pista dupla têm 2 faixas por sentido
+        if (t.width && !isNaN(parseFloat(t.width))) w = clamp(parseFloat(t.width), 2.2, 30); else if (ln) w = clamp(ln * 3.5 + (big ? 2.5 : 0), 3, 30);   // faixa de 3,5 m (+ acostamento)
+        D.roads.push({ type: t.highway, w, lanes: ln || (w >= 5.5 ? 2 : 1), pts, ids: el.nodes, name: t.name || t.ref || '', ms: parseInt(t.maxspeed) || 0, oneway: ow });
+      }
       else if (OFFW[t.highway]) D.roads.push({ type: t.highway, w: OFFW[t.highway], pts, off: true });
     } else if (t.building) {
       if (closed || pts.length > 3) D.buildings.push({ pts, h: bh(t, el.id), ...bt(t) });

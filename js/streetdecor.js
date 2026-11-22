@@ -97,12 +97,18 @@ export function addStreetDetails(w, D, roads, bmask) {
   const addRule = (rec) => { rec.id = w.traffic.rules.length; w.traffic.rules.push(rec); const key = Math.floor(rec.x / 30) * 20011 + Math.floor(rec.z / 30); (w.traffic.grid.get(key) || w.traffic.grid.set(key, []).get(key)).push(rec); };
   const ruleAt = (a, type, grp) => addRule({ type, grp, x: a.x - a.tx * (a.w / 2 + 3.2), z: a.z - a.tz * (a.w / 2 + 3.2), tx: a.tx, tz: a.tz, w: a.w });
 
-  // ---- marcações longitudinais ----
+  // ---- marcações longitudinais: por número de faixas (pista simples, dupla ou tripla) ----
   for (const r of drive) {
-    const p = r.pts, hw = r.w / 2;
-    if (r.w >= 5.5) for (const sg of [-1, 1]) { const o = offsetPts(p, sg * (hw - 0.4)); for (let i = 0; i < o.length - 1; i++) P.line('#ececec', o[i][0], o[i][1], o[i + 1][0], o[i + 1][1], 0.15, 0.07); }
-    if (r.w >= 9) for (const sg of [-1, 1]) { const o = offsetPts(p, sg * hw / 2); for (let i = 0; i < o.length - 1; i++) P.dashed('#ececec', o[i][0], o[i][1], o[i + 1][0], o[i + 1][1], 0.13, 3, 6, 0.07); }
-    if (r.w >= 5 && !r.oneway) for (let i = 0; i < p.length - 1; i++) { const [ax, az] = p[i], [bx, bz] = p[i + 1]; if (Math.hypot(bx - ax, bz - az) > 2) P.dashed('#f2d24a', ax, az, bx, bz, 0.15, 3.5, 5.5, 0.07); }
+    const p = r.pts, hw = r.w / 2, big = r.type === 'motorway' || r.type === 'trunk', sh = big ? 1.25 : 0;           // acostamento nas rodovias
+    const ln = Math.max(1, r.lanes || Math.round(r.w / 3.4)), lw = (r.w - 2 * sh) / (r.oneway ? ln : Math.max(1, ln));
+    const line = (off, col, wd, dash) => { const o = offsetPts(p, off); for (let i = 0; i < o.length - 1; i++) { if (dash) P.dashed(col, o[i][0], o[i][1], o[i + 1][0], o[i + 1][1], wd, 3, 7, 0.07); else P.line(col, o[i][0], o[i][1], o[i + 1][0], o[i + 1][1], wd, 0.07); } };
+    if (r.w >= 5.5) for (const sg of [-1, 1]) line(sg * (hw - sh - 0.2), '#ececec', 0.15, false);                       // linhas de borda contínuas
+    if (r.oneway) { for (let k = 1; k < ln; k++) line(-hw + sh + k * lw, '#ececec', 0.13, true); }                       // pista de mão única: separadores tracejados
+    else if (r.w >= 5) {
+      const per = Math.max(1, Math.floor(ln / 2));
+      if (ln >= 4) { line(0.13, '#f2d24a', 0.12, false); line(-0.13, '#f2d24a', 0.12, false); } else if (ln >= 2) line(0, '#f2d24a', 0.15, true);   // eixo: duplo contínuo (4+ faixas) ou tracejado
+      for (let k = 1; k < per; k++) for (const sg of [-1, 1]) line(sg * k * lw, '#ececec', 0.13, true);               // separadores de faixa em cada sentido
+    }
   }
   // ---- topologia real: de cada nó, as vias (com sentido) que chegam nele ----
   const nodeWay = new Map();
@@ -331,9 +337,9 @@ export function addStreetDetails(w, D, roads, bmask) {
   // ---- lombadas (reais do OSM + genéricas): o perfil depende da velocidade permitida na via ----
   //  velocidade baixa => lombada curta e alta (arco estreito, bem dura); velocidade alta => arco longo e suave (mesa de velocidade)
   const bumpSpec = (kmh, kind) => {
-    const v = kmh <= 25 ? 20 : kmh <= 35 ? 30 : kmh <= 45 ? 40 : kmh <= 55 ? 50 : kmh <= 65 ? 60 : 70;
+    const v = kmh <= 25 ? 20 : kmh <= 35 ? 30 : kmh <= 45 ? 40 : kmh <= 55 ? 50 : kmh <= 65 ? 60 : kmh <= 75 ? 70 : 80;
     // rampa = comprimento da subida (inclinação = altura / rampa): quanto mais baixa a velocidade, mais íngreme
-    const P = { 20: { h: 0.14, L: 1.1, tab: 0.28 }, 30: { h: 0.12, L: 1.8, tab: 0.42 }, 40: { h: 0.10, L: 3.0, tab: 0.95 }, 50: { h: 0.09, L: 4.8, tab: 1.7 }, 60: { h: 0.09, L: 8, tab: 3 }, 70: { h: 0.08, L: 12, tab: 4.5 } }[v];
+    const P = { 20: { h: 0.14, L: 1.1, tab: 0.28 }, 30: { h: 0.12, L: 1.8, tab: 0.42 }, 40: { h: 0.10, L: 3.0, tab: 0.95 }, 50: { h: 0.09, L: 4.8, tab: 1.7 }, 60: { h: 0.09, L: 8, tab: 3 }, 70: { h: 0.08, L: 12, tab: 4.5 }, 80: { h: 0.07, L: 18, tab: 7 } }[v];
     if (kind === 'table' && P.tab < 1.6) return { h: Math.min(P.h, 0.10), L: Math.max(P.L, 6), tab: 1.6, v };
     return { ...P, v };
   };
@@ -365,7 +371,7 @@ export function addStreetDetails(w, D, roads, bmask) {
       along(r.pts, k <= 30 ? 150 : 260, (x, z, tx, tz) => { if (rb() < 0.55 && !near(x, z, 20 * 20)) addBump(x, z, tx, tz, r.w, k, 'bump'); });
     }
     // vias coletoras/arteriais de 50-70 km/h: mesas longas e suaves nos cruzamentos de pedestre
-    for (const r of drive) { const k = roadKmh(r); if (k < 50 || k > 70 || r.w < 3.5) continue; along(r.pts, 420, (x, z, tx, tz) => { if (rb() < 0.3 && !near(x, z, 25 * 25)) addBump(x, z, tx, tz, r.w, k, 'table'); }); }
+    for (const r of drive) { const k = roadKmh(r); if (k < 50 || r.w < 3.5) continue; along(r.pts, k >= 80 ? 700 : 420, (x, z, tx, tz) => { if (rb() < (k >= 80 ? 0.35 : 0.3) && !near(x, z, 30 * 30)) addBump(x, z, tx, tz, r.w, k, 'table'); }); }
   }
 
   w.bumpCount = nBump;

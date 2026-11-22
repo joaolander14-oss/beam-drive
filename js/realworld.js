@@ -84,9 +84,10 @@ export function buildRealWorld(D) {
     if (r.pts.length < 2 || (r.off && r.w < 2.2)) continue;
     const pts = [r.pts[0]]; along(r.pts, STEPR, (x, z) => pts.push([x, z])); pts.push(r.pts[r.pts.length - 1]);
     const ys = pts.map(([x, z]) => D.elev(x, z) - D.base);
-    smooth(ys, 6, 6);
+    const hwyT = r.type === 'motorway' || r.type === 'trunk' || r.type === 'primary' || r.type === 'secondary';
+    smooth(ys, hwyT ? 3 : 6, hwyT ? 3 : 6);      // rodovias seguem o relevo (suavização leve); ruas urbanas são mais niveladas
     const hwE = r.w / 2 + (r.off ? 0.6 : hasSidewalk(r) ? 2.6 : 1.0);
-    const R = { pts, ys, hw: hwE, off: !!r.off, ri: RS.length }; RS.push(R);
+    const R = { pts, ys, hw: hwE, off: !!r.off, ri: RS.length, g: r.off ? 0.16 : (r.type === 'motorway' || r.type === 'trunk') ? 0.075 : (r.type === 'primary' || r.type === 'secondary') ? 0.10 : 0.09 }; RS.push(R);
     pts.forEach(([x, z], i) => { const o = { x, z, R, i }; const key = Math.floor(x / CR) * 20011 + Math.floor(z / CR); (gridR.get(key) || gridR.set(key, []).get(key)).push(o); });
   }
   // cruzamentos: as vias que se encontram são levadas à mesma cota (média das cotas num raio de ~8 m), depois suaviza de novo
@@ -99,7 +100,7 @@ export function buildRealWorld(D) {
     });
     for (const R of RS) { R.ys = nv[R.ri]; smooth(R.ys, 2, 2); }
   }
-  for (const R of RS) limitGrade(R.ys, R.off ? 0.16 : 0.09);
+  for (const R of RS) limitGrade(R.ys, R.g);
   const roadAt = (x, z) => {
     let bv = 1e9; const cx = Math.floor(x / CR), cz = Math.floor(z / CR), near = [];
     for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) { const a = gridR.get((cx + i) * 20011 + (cz + j)); if (a) for (const o of a) { const d = Math.hypot(o.x - x, o.z - z) - o.R.hw; near.push([d, o.R.ys[o.i]]); if (d < bv) bv = d; } }
@@ -193,6 +194,11 @@ export function buildRealWorld(D) {
   D.stats = Object.assign(D.stats || {}, { generic: nGen });
   const key = b => Math.floor(b.pts[0][0] / 110) * 10007 + Math.floor(b.pts[0][1] / 110);
   const blds = D.buildings.slice(0, 20000).sort((a, b) => key(a) - key(b));
+  // amostras das vias de carro (para não colocar colisão de prédio em cima da pista)
+  const rsg = new Map(), RC = 16;
+  for (const r of roads) { if (r.off || r.w < 3 || r.pts.length < 2) continue; for (let i = 0; i < r.pts.length - 1; i++) { const a0 = r.pts[i], c0 = r.pts[i + 1], L0 = Math.hypot(c0[0] - a0[0], c0[1] - a0[1]), n0 = Math.max(1, Math.ceil(L0 / 5)); for (let k = 0; k <= n0; k++) { const x = a0[0] + (c0[0] - a0[0]) * k / n0, z = a0[1] + (c0[1] - a0[1]) * k / n0, key = Math.floor(x / RC) * 20011 + Math.floor(z / RC); (rsg.get(key) || rsg.set(key, []).get(key)).push([x, z, r.w / 2]); } } }
+  const onRoad = (x, z, pad) => { const cx = Math.floor(x / RC), cz = Math.floor(z / RC); for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) { const l = rsg.get((cx + i) * 20011 + (cz + j)); if (l) for (const q of l) if ((q[0] - x) ** 2 + (q[1] - z) ** 2 < (q[2] + pad) ** 2) return true; } return false; };
+  const roadInside = pts => { let a = 1e9, b = 1e9, c = -1e9, d = -1e9; for (const [x, z] of pts) { a = Math.min(a, x); c = Math.max(c, x); b = Math.min(b, z); d = Math.max(d, z); } for (let x = a; x <= c; x += 4) for (let z = b; z <= d; z += 4) if (inPoly(x, z, pts) && onRoad(x, z, 0.5)) return true; return false; };
   const COLL_R = 420, COLL_MAX = 1600; let ncoll = 0;
   const wcv = document.createElement('canvas'); wcv.width = wcv.height = 64; { const g = wcv.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, 64, 64); g.fillStyle = '#7f8c99'; for (let y = 6; y < 64; y += 21) for (let x = 6; x < 64; x += 21) g.fillRect(x, y, 11, 12); }
   const wtex = new THREE.CanvasTexture(wcv); wtex.wrapS = wtex.wrapT = THREE.RepeatWrapping; wtex.colorSpace = THREE.SRGBColorSpace; wtex.repeat.set(1 / 3.4, 1 / 3.4); wtex.anisotropy = 4;
@@ -228,9 +234,10 @@ export function buildRealWorld(D) {
       if (ncoll >= COLL_MAX || Math.hypot(pts[0][0], pts[0][1]) > COLL_R) continue;   // longe do centro: só visual, sem colisão
       ncoll++;
       let pa = 0; for (let i = 0; i < pts.length; i++) { const a2 = pts[i], b2 = pts[(i + 1) % pts.length]; pa += a2[0] * b2[1] - b2[0] * a2[1]; } pa = Math.abs(pa) / 2;
-      if (pa / ((u1 - u0) * (v1 - v0) + 1e-6) > 0.8) w.addBoxCol(cu * ca - cv * sa, lo + depth / 2 - 0.5, cu * sa + cv * ca, (u1 - u0) / 2, depth / 2, (v1 - v0) / 2, ang);
+      if (pa / ((u1 - u0) * (v1 - v0) + 1e-6) > 0.8 && !roadInside(pts)) w.addBoxCol(cu * ca - cv * sa, lo + depth / 2 - 0.5, cu * sa + cv * ca, (u1 - u0) / 2, depth / 2, (v1 - v0) / 2, ang);
       else for (let i = 0; i < pts.length; i++) {   // prédio em L/U/curvo: paredes exatas (não bloqueia a rua ao lado)
         const a2 = pts[i], b2 = pts[(i + 1) % pts.length], L = Math.hypot(b2[0] - a2[0], b2[1] - a2[1]); if (L < 0.6) continue;
+        if (onRoad((a2[0] + b2[0]) / 2, (a2[1] + b2[1]) / 2, 1.8) || onRoad(a2[0], a2[1], 1.8) || onRoad(b2[0], b2[1], 1.8)) continue;   // via passando por baixo/ao lado: sem parede invisível
         w.addBoxCol((a2[0] + b2[0]) / 2, lo + depth / 2 - 0.5, (a2[1] + b2[1]) / 2, L / 2 + 0.1, depth / 2, 0.4, Math.atan2(b2[1] - a2[1], b2[0] - a2[0]));
       }
     } catch (e) { /* polígono inválido */ }
