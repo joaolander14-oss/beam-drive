@@ -809,7 +809,7 @@ export class Vehicle {
   collisions(dt) {
     const s = this.spec, world = this.world;
     const n = s.hull.length;
-    if (!this._hp) this._hp = Array.from({ length: n }, () => V());
+    if (!this._hp || this._hp.length !== n) this._hp = Array.from({ length: n }, () => V());   // o casco muda de tamanho ao trocar de carro/peças
     for (let i = 0; i < n; i++) this.toWorld(s.hull[i], this._hp[i]);
     const bk = this.dmg.broken, ht = s.hullTag;
     // chão: teto de altura do terreno sob o carro (5 amostras); pontos bem acima disso nem consultam o terreno
